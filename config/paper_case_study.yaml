@@ -1,0 +1,77 @@
+# Case study of Yi et al., IEEE TCYB 56(6):3540-3550, 2026, Section VI.
+# Every value states its source: [Paper] Sec./eq., or [Eng] with an A-item (docs/equation_map.md §9)
+# or decision ID (docs/RESEARCH_LOG.md). SI units throughout.
+
+physics:
+  g: 9.81                      # [Eng] A24: value of g not stated in paper
+
+leader:                        # Quadrotor 1
+  id: 1
+  mass: 1.0                    # [Paper] Sec. VI, m1 = 1 kg
+  inertia_diag: [0.0082, 0.0080, 0.0145]  # [Paper] Sec. VI, J1 (printed unit kg m^2/rad^2, A21)
+  sphere_offset: [0.0, 0.0, 1.0]          # [Paper] Sec. VI, h1 = [0,0,1] m; inertial frame assumed (A19)
+  trajectory:                  # [Paper] Sec. VI, p1(t) = [2.5+0.4t, -1+0.5t, 0.4t] m
+    p0: [2.5, -1.0, 0.0]
+    velocity: [0.4, 0.5, 0.4]  # constant velocity -> leader acceleration is zero (A23)
+
+followers:
+  - id: 2
+    mass: 1.3                              # [Paper] Sec. VI, m2
+    inertia_diag: [0.0082, 0.0080, 0.0145] # [Paper] Sec. VI, J2
+    focal_length: 0.0032                   # [Paper] Sec. VI, lambda2 = 3.2 mm
+    p0: [0.4, -0.3, 0.0]                   # [Paper] Sec. VI, p2(0)
+    euler0: [0.0, 0.0, 0.174]              # [Paper] Sec. VI, Theta2(0) (ZYX convention, A13)
+    v0: [0.0, 0.0, 0.0]                    # [Eng] A19, not given
+    omega0: [0.0, 0.0, 0.0]                # [Eng] A19, not given
+    delta: [4.0, 1.0, 1.0]                 # [Paper] Sec. VI, Delta12; read as desired q1 - p2 (A10)
+    observer:
+      alpha: 5.0                           # [Paper] Sec. VI, alpha12
+      kappa: 5.0                           # [Paper] Sec. VI, kappa12
+      eps: 0.5                             # [Paper] Sec. VI, epsilon12
+    beta: 5.0                              # [Paper] Sec. VI, beta2 (bound on gravity-compensated mu, D14)
+    gamma: 1.0                             # [Paper] Sec. VI, gamma2
+    Q_scale: 10.0                          # [Paper] Sec. VI, Q2 = 10 I6
+    R_scale: 8.0                           # [Paper] Sec. VI, R2 = 8 I3
+    S_scale: 10.0                          # [Paper] Sec. VI, S2 = 10 I12
+    D_scale: 8.0                           # [Paper] Sec. VI, D2 = 8 I3
+    tol_vs: 1.0e-5                         # [Paper] Sec. VI, varrho32
+    tol_att: 1.0e-5                        # [Paper] Sec. VI, varrho42
+  - id: 3
+    mass: 2.0                              # [Paper] Sec. VI, m3
+    inertia_diag: [0.0082, 0.0080, 0.0145] # [Paper] Sec. VI, J3
+    focal_length: 0.0032                   # [Paper] Sec. VI, lambda3
+    p0: [1.5, 1.5, 0.0]                    # [Paper] Sec. VI, p3(0)
+    euler0: [0.0, 0.0, 0.174]              # [Paper] Sec. VI, Theta3(0)
+    v0: [0.0, 0.0, 0.0]                    # [Eng] A19
+    omega0: [0.0, 0.0, 0.0]                # [Eng] A19
+    delta: [4.0, -1.0, 1.0]                # [Paper] Sec. VI, Delta13 (A10)
+    observer:
+      alpha: 5.0                           # [Paper] Sec. VI, alpha13
+      kappa: 55.0                          # [Paper] Sec. VI, kappa13 (as printed, A6)
+      eps: 0.5                             # [Paper] Sec. VI, epsilon13
+    beta: 5.0                              # [Paper] Sec. VI, beta3 (D14)
+    gamma: 1.0                             # [Paper] Sec. VI, gamma3
+    Q_scale: 10.0                          # [Paper] Sec. VI, Q3
+    R_scale: 8.0                           # [Paper] Sec. VI, R3
+    S_scale: 10.0                          # [Paper] Sec. VI, S3
+    D_scale: 8.0                           # [Paper] Sec. VI, D3
+    tol_vs: 1.0e-5                         # [Paper] Sec. VI, varrho33
+    tol_att: 1.0e-5                        # [Paper] Sec. VI, varrho43
+
+learning:
+  dT: 0.05                     # [Paper] Sec. VI, integral interval Delta T
+
+simulation:
+  duration: 50.0               # [Paper] read from time axes of Figs. 4-9
+  step: 0.001                  # [Eng] A18, RK4 fixed step
+  integrator: rk4              # [Eng] D17 / A18
+
+engineering:
+  gravity_compensation: true   # [Eng] D14: applied thrust vector = mu + m g e3
+  e_dot_source: exact          # [Eng] D15: "exact" (simulator truth) or "finite_difference"
+  psi_ref: 0.0                 # [Eng] A15, inferred from Fig. 8 (e_psi(0) = 0.174)
+  sphere_radius: 0.1           # [Eng] A9, only used for the moment-accuracy check (A8)
+  observer_init:               # [Eng] A19
+    e_hat: measured            # e_hat(0) = e(0)
+    v_hat: [0.0, 0.0, 0.0]
+    zeta_hat: 0.0
