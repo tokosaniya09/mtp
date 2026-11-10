@@ -1,0 +1,6 @@
+# Versions installed and tested in .venv on 2026-11-10 (Python 3.13.1).
+numpy==2.5.4
+scipy==1.18.1
+matplotlib==3.11.2
+PyYAML==6.0.3
+pytest==9.2.0
