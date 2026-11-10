@@ -79,6 +79,8 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D19 | 2026-11-11 | [Eng] A8: use Way 1 features s = vq/x* everywhere; eq. (3) implemented with disc moments (equals Way 1 exactly); exact elliptical sphere image not modelled | User choice; it is the model the paper's dynamics assume | A8 becomes a stated assumption, not numerically quantified | Decided |
+| D18 | 2026-11-10 | Code hosted at github.com/tokosaniya09/mtp (branch main). Paper PDF not committed; local instruction file excluded via `.git/info/exclude` | IEEE licence forbids redistributing the PDF; instruction file is local-only by user choice | README tells readers to obtain the PDF via DOI | Decided |
 | D17 | 2026-11-10 | [Eng] Plant eq. (1): state [p, v, R(9), omega]; RK4 h = 1 ms; R re-projected to SO(3) by SVD each step; ZYX Euler for output only; g = 9.81 (adopts A13, A18, A24 for the plant) | Integrating R avoids gimbal lock; projection is cheap insurance (measured drift without it: 4e-14 over 50 s at h = 1 ms) | `dynamics.py`, `sim/integrators.py` | Decided |
 | D16 | 2026-11-10 | Focus on reproducing the base paper only; literature review deferred until the code reproduces Figs. 2–9 behaviour. Every error is logged (symptom, cause, fix) | User direction: a working reproduction first | Lit-review tasks moved after Phase 1; new Error log section | Decided |
 | D15 | 2026-11-10 | [Eng] A4: observer's e_dot is pluggable; reproduce with exact e_dot from simulator truth, then re-run with filtered finite difference of sampled e as a check | Paper does not say how e_dot is obtained; exact value isolates the paper's design, finite difference shows realistic behaviour | Observer takes e_dot as an input; both modes tested and reported | Decided |
@@ -117,8 +119,11 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
 - [x] Phase 1.1 — Quadrotor dynamics eq. (1): `src/vsfc/dynamics.py`, `src/vsfc/sim/integrators.py`, 11 tests
       (hover, exact free fall, tilt sign convention, closed-form yaw spin, energy + angular-momentum conservation,
       SO(3), Euler round-trip, Euler-rate matrix). RK4 order measured: error ratio 15.999 per step halving (ideal 16). 2026-11-10.
-- [ ] Phase 1.2 — Camera & features, eqs. (2)–(4): ideal features, numerical sphere moments, A8 accuracy check.
-- [ ] Phase 1.3+ — observer, RL core, outer loop, inner loop, closed loop, figures (one at a time).
+- [x] Phase 1.2 — Camera & features, eqs. (2)–(4): `src/vsfc/camera.py`, 7 tests (hand-worked example for follower 2
+      at t = 0: e = [-0.475, -0.425, 0]; eq. (3) with disc moments = Way 1 to 1e-12; s_dot = v/x*; eq. (2) interaction
+      matrix vs finite difference; sphere-behind-camera rejected). 2026-11-11.
+- [ ] Phase 1.3 — Leader–follower dynamics eq. (5) + adaptive velocity observer eqs. (6)–(9).
+- [ ] Phase 1.4+ — RL core, outer loop, inner loop, closed loop, figures (one at a time).
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
       vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
 
