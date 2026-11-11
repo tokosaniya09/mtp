@@ -143,7 +143,7 @@ the interaction matrix matches finite differences of (2); a vector ${}^vq$ equal
 **[Paper] (5)**
 $$\dot e_{ij} = v_{ij}/x^*_{ij},\qquad \dot v_{ij} = -ge_3 + R_jf_{Tj}e_3/m_j + \dot v_i,\qquad \|\dot v_i\|\le\zeta_i$$
 
-**Explanation.** $\dot v_{ij}=\dot v_i-\dot v_j$; substituting $\dot v_j$ from (1) gives the second line. With
+**Explanation.** Eq. (5) is the dynamics of the *relative* state, i.e. the leader as seen by the follower's camera. The leader moves freely: its acceleration $\dot v_i$ is an unknown, bounded disturbance. The follower's thrust vector is the only control input. $\dot v_{ij}=\dot v_i-\dot v_j$; substituting $\dot v_j$ from (1) gives the second line. With
 the control input defined as $\mu_j = R_jf_{Tj}e_3$ (the thrust vector, used in Sec. IV), the system is a
 double integrator in $(e, v_{ij})$ driven by $\mu_j/m_j$, by gravity, and by the unknown, bounded leader
 acceleration.
@@ -153,7 +153,7 @@ acceleration.
 | $\dot v_i$ | leader acceleration (unknown to follower) | (3,) | m/s² |
 | $\zeta_i$ | bound on $\|\dot v_i\|$ (unknown) | scalar | m/s² |
 
-**Code.** `relative_dynamics(e, v_ij, mu_j, a_leader, m_j, g, x_star) -> (e_dot, v_ij_dot)`. Used for tests and
+**Code.** `relative_dynamics(v_ij, thrust_vec, a_leader, m_j, g, x_star) -> (e_dot, v_ij_dot)` (does not depend on $e$; `thrust_vec` is the physical $R_jf_{Tj}e_3$, D20) and `relative_state(p_i, v_i, h_i, p_j, v_j, x_star, s_star) -> (e, v_ij)`. Used for tests and
 as the reference model the observer is checked against. The plant itself is (1) for each vehicle.
 
 **Tests.** Consistency with (1): simulate leader and follower separately, compute $e$ and $v_{ij}$, and check
@@ -215,7 +215,10 @@ controller (Sec. IV) is model-free; the observer is not (A22).
 **Code.**
 - `sat(rho, eps)` (elementwise)
 - `class AdaptiveVelocityObserver(alpha, kappa, eps, x_star, m_j, g)` with
-  `derivatives(obs_state, e_meas, e_dot_meas, mu_j) -> obs_state_dot`, where `obs_state = [ê(3), v̂(3), ζ̂(1)]`.
+  `derivatives(obs_state, e_meas, e_dot_meas, thrust_vec) -> obs_state_dot`, where `obs_state = [ê(3), v̂(3), ζ̂(1)]`
+  and `thrust_vec` is the physical $R_jf_{Tj}e_3$ (D20); `signals(...) -> (ẽ, ρ, ζ̄)` (needed later by (10)).
+- `differentiator.FilteredDifferentiator(dt, tau)`: the finite-difference source of $\dot e$ (D15, D20).
+- `sim/observer_openloop.simulate_observer_open_loop(...)`: open-loop harness, follower = eq. (1) with prescribed excitation (D21).
   The source of `e_dot_meas` is pluggable (A4).
 - `error_dynamics(...)` (7), `lyapunov(...)` (8), `lyapunov_rate_bound(...)` (9), `gain_condition(alpha, kappa, x_star)` (Thm 1): test helpers.
 
@@ -482,3 +485,5 @@ is built; **Note** = no action, but it must be stated in the thesis.
 | A22 | Observer needs $m_j$, $g$, $R_j$, $f_{Tj}$, so the overall scheme is not fully model-free | (6) | Note in thesis | Note |
 | A23 | Leader has constant velocity ⇒ adaptive term $\bar\zeta$ never needed in Sec. VI (Limitation 3) | Sec. VI | Reproduce as printed; add accelerating-leader test (our extension, labelled) | Note |
 | A24 | Value of $g$ not stated | Sec. VI | $g=9.81$ m/s² | Proposed |
+| A25 | Fig. 5: $\|\tilde e_{12}(0)\|\approx8.8$, $\|\tilde e_{13}(0)\|\approx1.7$, but $\|e_{12}(0)\|\approx0.64$, so the paper's $\hat e(0)$ is unknown | Fig. 5 | Keep A19 ($\hat e(0)=e(0)$); compare behaviour, not $t=0$ values | Open |
+| A26 | Fig. 5 $\|\tilde v_{12}\|$ oscillates; with exact $\dot e$ and true thrust, (7) is linear with real eigenvalues ($-5.02,-1.23$ for pair 12) and sat only adds damping, so (6) alone cannot oscillate | Fig. 5, (7) | Hypothesis: paper fed commanded $\mu$ (attitude lag) or a differentiated/noisy $\dot e$; test in closed loop | Open |
