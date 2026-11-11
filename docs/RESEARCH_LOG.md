@@ -1,6 +1,6 @@
 # Research Log — Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 This is the canonical research log (decision D12). It continues the earlier external notes (snapshot of 2026-11-10).
 Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision · **[Ours]** our contribution.
@@ -79,6 +79,8 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D21 | 2026-11-11 | [Eng] Phase 1.3 validated in open loop (follower = eq. (1) with a prescribed near-hover thrust/torque excitation, no controller yet); Fig. 5 is compared on behaviour only, and the closed-loop comparison is repeated once the controller exists | Fig. 5 is closed-loop; its initial errors (A25) and oscillations (A26) cannot come from eq. (6) alone | `sim/observer_openloop.py`, `scripts/validate_observer.py`; revisit Fig. 5 in the closed-loop phase | Decided |
+| D20 | 2026-11-11 | [Eng] Observer implementation: takes the PHYSICAL thrust vector R_j f_Tj e3 (D14 mapping stays in the controller); state [e_hat, v_hat, zeta_hat]; init per A19 (e_hat(0)=e(0), v_hat(0)=0, zeta_hat(0)=0); kappa_13 = 55 as printed (A6); FD e_dot = backward difference + first-order filter, tau = 0.02 s; extra [Eng] sinusoidal-leader test (A23) | Keeps eq. (6) literal and plant-agnostic; FD filter is the simplest realistic source | `leader_follower.py`, `observer.py`, `differentiator.py`, `sim/leaders.py` | Decided |
 | D19 | 2026-11-11 | [Eng] A8: use Way 1 features s = vq/x* everywhere; eq. (3) implemented with disc moments (equals Way 1 exactly); exact elliptical sphere image not modelled | User choice; it is the model the paper's dynamics assume | A8 becomes a stated assumption, not numerically quantified | Decided |
 | D18 | 2026-11-10 | Code hosted at github.com/tokosaniya09/mtp (branch main). Paper PDF not committed; local instruction file excluded via `.git/info/exclude` | IEEE licence forbids redistributing the PDF; instruction file is local-only by user choice | README tells readers to obtain the PDF via DOI | Decided |
 | D17 | 2026-11-10 | [Eng] Plant eq. (1): state [p, v, R(9), omega]; RK4 h = 1 ms; R re-projected to SO(3) by SVD each step; ZYX Euler for output only; g = 9.81 (adopts A13, A18, A24 for the plant) | Integrating R avoids gimbal lock; projection is cheap insurance (measured drift without it: 4e-14 over 50 s at h = 1 ms) | `dynamics.py`, `sim/integrators.py` | Decided |
@@ -122,7 +124,18 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
 - [x] Phase 1.2 — Camera & features, eqs. (2)–(4): `src/vsfc/camera.py`, 7 tests (hand-worked example for follower 2
       at t = 0: e = [-0.475, -0.425, 0]; eq. (3) with disc moments = Way 1 to 1e-12; s_dot = v/x*; eq. (2) interaction
       matrix vs finite difference; sphere-behind-camera rejected). 2026-11-11.
-- [ ] Phase 1.3 — Leader–follower dynamics eq. (5) + adaptive velocity observer eqs. (6)–(9).
+- [x] Phase 1.3 — Leader–follower dynamics eq. (5) + adaptive velocity observer eqs. (6)–(9), 2026-11-11.
+      `leader_follower.py`, `observer.py`, `differentiator.py`, `sim/leaders.py`, `sim/observer_openloop.py`,
+      `scripts/validate_observer.py`; 22 new tests (45 total, all pass). Eqs. (5)–(7) re-checked against the PDF.
+      Results (open loop, h = 1 ms, paper's constant-velocity leader, exact e_dot):
+      pair 12 |v~| < 1e-3 at 4.5 s; pair 13 at 0.5 s (kappa = 55); both reach ~1e-14 by 20 s. Fig. 5 shows
+      convergence within ~5 s, which is consistent (behaviour only, D21).
+      Eq. (5) matches eq. (1) by central differences (accelerating leader); (6) − (5) gives (7) to 1e-12;
+      (9) bound holds at 1000 random states outside the boundary layer.
+      [Eng] accelerating leader (||a|| <= 0.73 m/s^2): |v~| bounded at 0.16–0.21 m/s (pair 12), under the kappa-only
+      bound 0.59; zeta_hat grows without limit (A5 confirmed).
+      FD e_dot (tau = 0.02 s): |v~| ≈ (tau + h)·|a_ij| on average (≈ 0.02 m/s here), scales with tau: filter lag,
+      not instability.
 - [ ] Phase 1.4+ — RL core, outer loop, inner loop, closed loop, figures (one at a time).
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
       vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
@@ -138,6 +151,13 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
 - [ ] A14/A15: attitude state coordinates (literal z vs tracking errors) and the mu -> (f_T, Theta_r, omega_r) mapping.
 - [ ] A11: Figs. 7/9 initial values inconsistent with stated initial conditions; validation will compare behaviour, not t=0 values.
 - [ ] Remaining A-items (A2, A3, A6, A8–A10, A12, A13, A16–A20) have proposed resolutions in `docs/equation_map.md` §9.
+- [ ] A25: Fig. 5 starts at ||e~_12(0)|| ≈ 8.8 and ||e~_13(0)|| ≈ 1.7, while ||e_12(0)|| ≈ 0.64; the paper's e_hat(0) is unknown
+      and not reproducible (like A11). We use e_hat(0) = e(0) (A19).
+- [ ] A26: Fig. 5 ||v~_12|| oscillates (peaks ≈ 1.2, 0.8 at ~0.3 s and ~1 s). With exact e_dot and the true thrust, (7) is
+      linear with real eigenvalues (−5.02, −1.23 for pair 12) and the sat term only adds damping, so (6) alone cannot
+      oscillate. Hypotheses: the paper fed the observer the commanded mu (not the actual R f e3 during attitude lag), or a
+      noisy/differentiated e_dot. Check in the closed-loop phase.
+- [ ] A6: sensitivity check of kappa_13 = 55 vs 5 still to do (in closed loop).
 - [ ] Is UWB acceptable under the "communication-free" premise? State the assumption explicitly.
 
 ## Error log
@@ -147,4 +167,6 @@ Newest first. Status: Fixed / Open / Workaround.
 
 | # | Date | Where | Symptom | Cause | Fix | Status |
 |---|---|---|---|---|---|---|
+| E3 | 2026-11-11 | Phase 1.3, `test_finite_difference_error_is_filter_lag` | Assertion failed: pointwise ratio |v~|/|a_ij| = 0.0154 < 0.8·(tau+h) = 0.0176 at t = 6 s | Test model too crude: the lag error is filtered by the observer's slow mode (~1.2 rad/s) while a_ij oscillates at 1.3 rad/s, so the pointwise ratio swings 0.013–0.026 | Test now checks the 4–10 s mean ratio (within ±25 % of tau+h) and the scaling with tau (0.02 vs 0.05); code unchanged | Fixed |
+| E2 | 2026-11-11 | Phase 1.3, PDF check | `import fitz` / `import pypdf` fail in `.venv`; `pdftotext` drops Greek symbols; `pdftoppm` warns "No display font for 'Symbol'" | No PDF library in the venv; text extraction cannot map the Symbol font | Rendered pages with `pdftoppm` (warnings harmless, equations render correctly) and read eqs. (5)–(7) and Fig. 5 from the images | Workaround |
 | E1 | 2026-11-10 | Phase 0.1, PDF tooling | `python -I crop.py` failed: `ModuleNotFoundError: No module named 'fitz'` | `-I` (isolated mode) ignores user site-packages, where PyMuPDF is installed | Ran the helper script without `-I` (script is ours, in scratchpad) | Fixed |
