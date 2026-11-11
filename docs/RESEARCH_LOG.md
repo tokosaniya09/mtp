@@ -79,6 +79,7 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D23 | 2026-11-11 | [Eng] Off-policy learner (Phase 1.4b): one actor basis shared by the m input channels; (29) solved by SVD `lstsq` (same minimiser as (N^T N)^-1 N^T T at full rank), rank/condition/RMS logged per iteration and `train` raises on rank deficiency; input ZOH over h, so int mu sigma is integrated exactly per sub-step, other integrals by trapezoid on the 1 ms grid (A18 → Decided); A3 → Decided (r_{k1,k2} = [R]_{k1k2}, verified against the PDF and the LQR test) | Simplest faithful form of (27)–(29); SVD avoids squaring the condition number; ZOH matches the plant integrator | `rl/data.py`, `rl/offpolicy_irl.py`; quadrotor bases (A16) and behaviour policy (A17) still to choose in 1.5 | Decided |
 | D22 | 2026-11-11 | [Eng] RL utility/basis (Phase 1.4a): R must be diagonal (r passed as a vector); ln(1 − tanh²ξ) in eq. (26) evaluated as −2 ln cosh ξ (stable form); `PolynomialBasis` is generic and the degree sets are chosen later (A16, Phase 1.4b/1.5) | The literal ln(1 − tanh²ξ) underflows to −inf for |ξ| > ~19; (13) is only path-independent for diagonal R; Fig. 2 must guide the basis choice | `rl/utility.py`, `rl/basis.py` | Decided |
 | D21 | 2026-11-11 | [Eng] Phase 1.3 validated in open loop (follower = eq. (1) with a prescribed near-hover thrust/torque excitation, no controller yet); Fig. 5 is compared on behaviour only, and the closed-loop comparison is repeated once the controller exists | Fig. 5 is closed-loop; its initial errors (A25) and oscillations (A26) cannot come from eq. (6) alone | `sim/observer_openloop.py`, `scripts/validate_observer.py`; revisit Fig. 5 in the closed-loop phase | Decided |
 | D20 | 2026-11-11 | [Eng] Observer implementation: takes the PHYSICAL thrust vector R_j f_Tj e3 (D14 mapping stays in the controller); state [e_hat, v_hat, zeta_hat]; init per A19 (e_hat(0)=e(0), v_hat(0)=0, zeta_hat(0)=0); kappa_13 = 55 as printed (A6); FD e_dot = backward difference + first-order filter, tau = 0.02 s; extra [Eng] sinusoidal-leader test (A23) | Keeps eq. (6) literal and plant-agnostic; FD filter is the simplest realistic source | `leader_follower.py`, `observer.py`, `differentiator.py`, `sim/leaders.py` | Decided |
@@ -143,8 +144,23 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
       difference; U ≈ mu^T R mu for small mu (rel. error x²/6 confirmed); (15) equals the numerical minimiser of H to 1e-5;
       (26) = (13)∘tanh policy to 1e-9 and stays finite for large xi; basis sizes, Jacobian vs finite difference, quadratic-form weights.
       Finding: U is BOUNDED (→ 2 ln 2 · beta² r per component); the bound on mu comes from dU/dmu → ∞ (E4).
-- [ ] Phase 1.4b — Off-policy IRL: data collection, Bellman rows (27)–(28), least squares (29), Alg. 3; LQR known-answer test.
-- [ ] Phase 1.5+ — Outer-loop training on the paper's followers (Figs. 2a,b, 4a,b), inner loop, closed loop, figures.
+      Committed as fae1cf4.
+- [x] Phase 1.4b — Off-policy IRL, 2026-11-11: `rl/data.py` (windowed fine-grid data, RK4 + ZOH rollout, sum-of-sinusoids
+      exploration), `rl/offpolicy_irl.py` (rows (27)–(28), least squares (29), Alg. 3 Steps 2–4). Eqs. (27)–(29) and Alg. 3
+      re-checked against the PDF (p. 3545): the derived explicit row in equation_map §5.6 matches term by term. 18 new tests
+      (82 total). Known-answer results:
+      LQR (n = 3, m = 2, unstable A, Q = 10I, R = diag(8, 4), beta = 1000, 400 windows of 0.05 s): critic vs Riccati P and
+      actor vs K/beta both 3e-7 relative; converged in 6 iterations with changes 44.5, 11.3, 2.5, 0.15, 5e-4, 8e-9
+      (quadratic, as Kleinman/Newton predicts); iteration 1 = Kleinman's first Lyapunov iterate to 3e-6; held-out
+      Bellman residual < 1e-5 relative; cond(N_bar) ≈ 1.1e5.
+      Constrained scalar (x_dot = 0.5x + u, beta = 1, q = r = 1; exact u* by root-finding the pointwise HJB; u*(1) = −0.983,
+      saturated): max |u_learned − u*| on |x| <= 1 is 5.7e-3 (actor degrees 1,3,5) and 6.0e-4 (1,3,5,7), so the error
+      falls as the basis grows.
+      Finding (A17): with on-policy data (mu = mu^(n)) the actor columns of N_bar vanish, so the behaviour policy must
+      carry exploration; the paper's "admissible control policy" alone is not enough.
+- [ ] Phase 1.5 — Outer loop on the paper's followers: choose bases (A16) and behaviour policy/M_j (A17) for delta = [e, v_hat],
+      collect data with plant (1) + observer (6) + D14 gravity compensation, train, compare with Figs. 2a,b and 4a,b.
+- [ ] Phase 1.6+ — Inner (attitude) loop, Alg. 4 (Figs. 2c,d), mu → (f_T, Theta_r, omega_r) mapping (A15), closed loop, Figs. 2–9.
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
       vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
 
@@ -175,6 +191,7 @@ Newest first. Status: Fixed / Open / Workaround.
 
 | # | Date | Where | Symptom | Cause | Fix | Status |
 |---|---|---|---|---|---|---|
+| E5 | 2026-11-11 | Phase 1.4b, docs edit | A scripted Python string replace wrote a backspace character into `equation_map.md` (`\bar` read as `\b` + "ar") and silently skipped one replacement; a `sed` repair then dropped the backslash | Escape sequences in a non-raw Python string; `sed` replacement also consumes `\\` | Fixed both lines with direct edits; checked the file has no control characters left. Use raw strings or the editor for LaTeX text | Fixed |
 | E4 | 2026-11-11 | Phase 1.4a, `docs/equation_map.md` §5.2 | Map claimed U(mu) → ∞ as |mu_k| → beta (wrong maths in our own notes) | U_k = beta² r f(x), f(x) = (1+x)ln(1+x) + (1−x)ln(1−x) → 2 ln 2: bounded. Only dU/dmu diverges | §5.2 corrected; test `test_positive_definite_and_bounded` checks the limit and the diverging gradient | Fixed |
 | E3 | 2026-11-11 | Phase 1.3, `test_finite_difference_error_is_filter_lag` | Assertion failed: pointwise ratio |v~|/|a_ij| = 0.0154 < 0.8·(tau+h) = 0.0176 at t = 6 s | Test model too crude: the lag error is filtered by the observer's slow mode (~1.2 rad/s) while a_ij oscillates at 1.3 rad/s, so the pointwise ratio swings 0.013–0.026 | Test now checks the 4–10 s mean ratio (within ±25 % of tau+h) and the scaling with tau (0.02 vs 0.05); code unchanged | Fixed |
 | E2 | 2026-11-11 | Phase 1.3, PDF check | `import fitz` / `import pypdf` fail in `.venv`; `pdftotext` drops Greek symbols; `pdftoppm` warns "No display font for 'Symbol'" | No PDF library in the venv; text extraction cannot map the Symbol font | Rendered pages with `pdftoppm` (warnings harmless, equations render correctly) and read eqs. (5)–(7) and Fig. 5 from the images | Workaround |
