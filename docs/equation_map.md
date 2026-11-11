@@ -255,8 +255,12 @@ elementwise.
 
 **[Derived] check of (13).** $\int\tanh^{-1}x\,dx = x\tanh^{-1}x+\tfrac12\ln(1-x^2)$. With $\upsilon=\beta x$:
 $2\beta r\int_0^{\mu}\tanh^{-1}(\upsilon/\beta)d\upsilon = 2\beta r\mu\tanh^{-1}(\mu/\beta) + \beta^2r\ln(1-(\mu/\beta)^2)$. ✓
-$U\ge0$, $U(0)=0$, and $U\to\infty$ is approached as $|\mu_k|\to\beta$. The penalty is what keeps the optimal
-input inside the bound.
+Per component, $U_k=\beta^2r_kf(x)$ with $x=\mu_k/\beta$ and $f(x)=2x\tanh^{-1}x+\ln(1-x^2)=(1+x)\ln(1+x)+(1-x)\ln(1-x)$.
+So $U\ge0$, $U(0)=0$, $U\approx\mu^T\mathcal R\mu$ for small $\mu$ (relative error $\approx x^2/6$), and **$U$ stays bounded**:
+$f\to2\ln2$ as $|x|\to1$. *(Corrected 2026-11-11: an earlier version of this map said $U\to\infty$; see E4.)* What keeps
+the optimal input inside the bound is the gradient $\partial U/\partial\mu=2\beta\mathcal R\tanh^{-1}(\mu/\beta)$, which
+diverges at the boundary, so the minimiser of $H$ is always interior. (13) requires $\mathcal R$ diagonal: only then is the
+integrand of (11) a gradient field, so the integral is path-independent.
 
 ### 5.3 Hamiltonian, optimal policy, HJB — (14)–(16)
 
@@ -329,8 +333,8 @@ trajectory at every iteration**. Store $\delta$ and $\mu$ at the sub-step resolu
 | $\mathcal R_j$ | input weight | (3,3) | $8I_3$ |
 
 **Code.** Written once and generic, so the same code serves (27)–(29) and (39)–(42):
-- `rl/basis.py`: `PolynomialBasis(dim, degrees, include_constant=False)` with `__call__(x) -> (l,)` and `jacobian(x)`. [Eng] The critic has no constant term (because $V(0)=0$); the actor has an odd/linear part (A16).
-- `rl/utility.py`: `utility_closed_form(mu, bound, Rdiag)` (13)/(34), `utility_numeric(...)` (11) for tests, `policy_from_xi(xi, bound)` (15)/(25)/(36)/(42), `utility_from_xi(xi, bound, Rdiag)` (26).
+- `rl/basis.py` (built, Phase 1.4a): `PolynomialBasis(dim, degrees)` with `__call__(x)` ((n,)→(l,) or (N,n)→(N,l)), `jacobian(x)`, `labels()`, `count(dim, degrees)`; `weights_from_quadratic_form(basis, P)` for the LQR check. The degree sets are chosen in 1.4b/1.5 ([Eng], A16): the critic should have no constant term (because $V(0)=0$), and the actor an odd/linear part.
+- `rl/utility.py` (built, Phase 1.4a): `utility_closed_form(mu, bound, r)` (13)/(34), `utility_numeric(...)` (11) for tests, `utility_gradient(mu, bound, r)` ($\partial U/\partial\mu$), `policy_from_xi(xi, bound)` (15)/(25)/(36)/(42), `xi_from_value_gradient(gradV, B, bound, r)` (15)/(18) model-based (tests only), `utility_from_xi(xi, bound, r)` (26), evaluated with the stable form $\ln(1-\tanh^2\xi)=-2\ln\cosh\xi$ (D22).
 - `rl/data.py`: `collect_offpolicy_data(plant_step, behaviour_policy, T_total, dT, h) -> Dataset` (Alg. 3 Step 1 / Alg. 4 Step 1). Stores fine-grid $(x,\mu)$ per window.
 - `rl/offpolicy_irl.py`: `bellman_rows(dataset, w_actor_n, ...) -> (N_bar, T_bar)` (27)–(28); `solve_weights(N_bar, T_bar)` (29) via `np.linalg.lstsq`, logging the condition number; `train(dataset, ...) -> weights, history` (Alg. 3 Steps 2–4). The same functions serve the attitude loop through `(bound, Rdiag, Q)` arguments.
 - `controllers/visual_servo.py`: `VisualServoController(weights, basis, beta).mu(delta)` (Alg. 3 Step 5).

@@ -79,6 +79,7 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D22 | 2026-11-11 | [Eng] RL utility/basis (Phase 1.4a): R must be diagonal (r passed as a vector); ln(1 − tanh²ξ) in eq. (26) evaluated as −2 ln cosh ξ (stable form); `PolynomialBasis` is generic and the degree sets are chosen later (A16, Phase 1.4b/1.5) | The literal ln(1 − tanh²ξ) underflows to −inf for |ξ| > ~19; (13) is only path-independent for diagonal R; Fig. 2 must guide the basis choice | `rl/utility.py`, `rl/basis.py` | Decided |
 | D21 | 2026-11-11 | [Eng] Phase 1.3 validated in open loop (follower = eq. (1) with a prescribed near-hover thrust/torque excitation, no controller yet); Fig. 5 is compared on behaviour only, and the closed-loop comparison is repeated once the controller exists | Fig. 5 is closed-loop; its initial errors (A25) and oscillations (A26) cannot come from eq. (6) alone | `sim/observer_openloop.py`, `scripts/validate_observer.py`; revisit Fig. 5 in the closed-loop phase | Decided |
 | D20 | 2026-11-11 | [Eng] Observer implementation: takes the PHYSICAL thrust vector R_j f_Tj e3 (D14 mapping stays in the controller); state [e_hat, v_hat, zeta_hat]; init per A19 (e_hat(0)=e(0), v_hat(0)=0, zeta_hat(0)=0); kappa_13 = 55 as printed (A6); FD e_dot = backward difference + first-order filter, tau = 0.02 s; extra [Eng] sinusoidal-leader test (A23) | Keeps eq. (6) literal and plant-agnostic; FD filter is the simplest realistic source | `leader_follower.py`, `observer.py`, `differentiator.py`, `sim/leaders.py` | Decided |
 | D19 | 2026-11-11 | [Eng] A8: use Way 1 features s = vq/x* everywhere; eq. (3) implemented with disc moments (equals Way 1 exactly); exact elliptical sphere image not modelled | User choice; it is the model the paper's dynamics assume | A8 becomes a stated assumption, not numerically quantified | Decided |
@@ -136,7 +137,14 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
       bound 0.59; zeta_hat grows without limit (A5 confirmed).
       FD e_dot (tau = 0.02 s): |v~| ≈ (tau + h)·|a_ij| on average (≈ 0.02 m/s here), scales with tau: filter lag,
       not instability.
-- [ ] Phase 1.4+ — RL core, outer loop, inner loop, closed loop, figures (one at a time).
+- [x] Phase 1.4a — Constrained utility and tanh policy, eqs. (11)–(13), (15), (25)–(26) (`rl/utility.py`), and polynomial
+      basis, eqs. (23)–(24) (`rl/basis.py`), 2026-11-11. Eqs. (10)–(18), (23)–(27) re-checked against the PDF. 19 new tests
+      (64 total, all pass): (13) = quadrature of (11) to 1e-9; hand value U(2.5) = 52.3248 (beta = 5, r = 8); dU/dmu by finite
+      difference; U ≈ mu^T R mu for small mu (rel. error x²/6 confirmed); (15) equals the numerical minimiser of H to 1e-5;
+      (26) = (13)∘tanh policy to 1e-9 and stays finite for large xi; basis sizes, Jacobian vs finite difference, quadratic-form weights.
+      Finding: U is BOUNDED (→ 2 ln 2 · beta² r per component); the bound on mu comes from dU/dmu → ∞ (E4).
+- [ ] Phase 1.4b — Off-policy IRL: data collection, Bellman rows (27)–(28), least squares (29), Alg. 3; LQR known-answer test.
+- [ ] Phase 1.5+ — Outer-loop training on the paper's followers (Figs. 2a,b, 4a,b), inner loop, closed loop, figures.
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
       vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
 
@@ -167,6 +175,7 @@ Newest first. Status: Fixed / Open / Workaround.
 
 | # | Date | Where | Symptom | Cause | Fix | Status |
 |---|---|---|---|---|---|---|
+| E4 | 2026-11-11 | Phase 1.4a, `docs/equation_map.md` §5.2 | Map claimed U(mu) → ∞ as |mu_k| → beta (wrong maths in our own notes) | U_k = beta² r f(x), f(x) = (1+x)ln(1+x) + (1−x)ln(1−x) → 2 ln 2: bounded. Only dU/dmu diverges | §5.2 corrected; test `test_positive_definite_and_bounded` checks the limit and the diverging gradient | Fixed |
 | E3 | 2026-11-11 | Phase 1.3, `test_finite_difference_error_is_filter_lag` | Assertion failed: pointwise ratio |v~|/|a_ij| = 0.0154 < 0.8·(tau+h) = 0.0176 at t = 6 s | Test model too crude: the lag error is filtered by the observer's slow mode (~1.2 rad/s) while a_ij oscillates at 1.3 rad/s, so the pointwise ratio swings 0.013–0.026 | Test now checks the 4–10 s mean ratio (within ±25 % of tau+h) and the scaling with tau (0.02 vs 0.05); code unchanged | Fixed |
 | E2 | 2026-11-11 | Phase 1.3, PDF check | `import fitz` / `import pypdf` fail in `.venv`; `pdftotext` drops Greek symbols; `pdftoppm` warns "No display font for 'Symbol'" | No PDF library in the venv; text extraction cannot map the Symbol font | Rendered pages with `pdftoppm` (warnings harmless, equations render correctly) and read eqs. (5)–(7) and Fig. 5 from the images | Workaround |
 | E1 | 2026-11-10 | Phase 0.1, PDF tooling | `python -I crop.py` failed: `ModuleNotFoundError: No module named 'fitz'` | `-I` (isolated mode) ignores user site-packages, where PyMuPDF is installed | Ran the helper script without `-I` (script is ours, in scratchpad) | Fixed |
