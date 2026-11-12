@@ -11,7 +11,7 @@ Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision ·
 - **Thesis title:** "Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control"
 - **Core question:** how does a follower quadrotor keep a reliable estimate of its leader's state, and hold
   formation, when its visual measurement of the leader is intermittent?
-- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 in progress.
+- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 done (outer loop, ideal attitude), Phase 1.6 (attitude loop) next.
 
 ## Base paper
 
@@ -79,6 +79,8 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D28 | 2026-11-12 | [Eng] A28: "randomly initialized" actor weights (Sec. VI) are drawn from ADMISSIBLE policies only: per-axis linear gains k_e, k_v ~ U(0.2, 2) > 0, cubic weights 0 (a tanh-saturated PD with positive gains stabilises a double integrator). Reference run starts from the behaviour gain K0 | Alg. 1 Step 1 requires an admissible mu^(0). Measured: unconstrained random N(0, 0.1²) starts converge per axis to the 3 non-stabilising Riccati solutions (E8); random cubic terms (std 0.01) still made 1–2 of 10 starts fail | `scripts/train_outer_loop.py`, config `init_gain_range`, `init_cubic_std` | Decided |
+| D27 | 2026-11-12 | [Eng] Refines D26 exploration after prototyping: e(t) = b + low-frequency sines (0.2–1.1 rad/s; x 0.3 N, y/z 1.2 N each) + high-frequency dither (2.3, 3.7, 5.3 rad/s; 5 N each); b_x drawn per run in [−0.4, 3] N (b_y = b_z = 0); e_x(0) in [−0.8, 3.5], e_y,z(0) in [−3, 3]; 20 runs × 20 s, 5 s burn-in. All values in config `learning_outer` | With PD gain k_e the closed-loop DC gain from exploration force to e is 1/k_e, so low-frequency excitation of a few N drove e_x < −1 (sphere behind camera, E7); dither saturates mu while barely moving e; the bias spreads runs over depth errors −0.5…3.3 (covers stated ICs and the A27 case) | `sim/outer_loop.py`, `config.py` (`OuterLearningConfig`), `scripts/collect_outer_data.py`; `sum_of_sinusoids` accepts (Q, m) amplitudes | Decided |
 | D26 | 2026-11-12 | [Eng] A17/A27 data for the outer loop (Phase 1.5 Step 3): data system = paper leader + ideal-attitude follower (D24) + observer (6) with exact e_dot + D14; each 20 s run drops its first 5 s (observer burn-in) from the training windows; behaviour mu = beta tanh((−K0 delta + sum of sinusoids)/beta), K0 = [1.0, 1.5] per axis; data region up to \|e_k\| ≈ 3.5, \|v_hat_k\| ≈ 3 m/s; ~20 runs (~6000 windows); actor init from K0 and from random seeds; extra large-error validation case e(0) ≈ [3.2, −1.45, 0] (pair 12, Fig. 7 x/y) | Learner assumes delta follows e_dot = v_hat/x*, which is false while v_hat converges (~4.5 s, Phase 1.3); dropping the burn-in keeps A19 and the observer unchanged; tanh keeps the behaviour input within ±beta; the region reaches saturation (A27) | `sim/outer_loop_data.py` (to build); rank/condition logged | Decided (user approved option A 2026-11-12) |
 | D25 | 2026-11-12 | [Eng] A16 for the outer loop: per-axis bases. Critic = for each axis k, all degree-2 and degree-4 monomials in (e_k, v_hat_k) (8 per axis, l_c = 24); actor channel k = degree-1 and degree-3 monomials in (e_k, v_hat_k) (l_a = 6, 18 actor weights). Learner extended to per-channel actor bases sigma_a,k as in eq. (24), equal size l_a; shared basis (D23) still supported | Exact V* separates by axis and xi_k depends only on (e_k, v_hat_k) (§5.8); quartic/cubic terms let V depart from quadratic where mu saturates; counts 24/18 are close to Fig. 2a,b (~15–25 / ~15–20 traces) | `rl/basis.py` (`MonomialBasis`, `grouped_basis`, `axis_groups`), `rl/offpolicy_irl.py`; 10 new tests | Decided (user approved 2026-11-12) |
 | D24 | 2026-11-12 | [Eng] Phase 1.5 trains and tests the outer loop with ideal attitude: applied force = mu + m_j g e3 enters the translational part of (1) directly; the inner loop joins in 1.6 | Isolates Alg. 3 (as the paper presents it) so mismatches trace to the outer loop; attitude lag would mix in | Fig. 4a,b comparison repeated with the full cascade in 1.6 | Decided (user confirmed 2026-11-12) |
@@ -162,7 +164,7 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
       Finding (A17): with on-policy data (mu = mu^(n)) the actor columns of N_bar vanish, so the behaviour policy must
       carry exploration; the paper's "admissible control policy" alone is not enough.
       Committed as 8831e0f.
-- [ ] Phase 1.5 — Outer loop on the paper's followers: choose bases (A16) and behaviour policy/M_j (A17) for delta = [e, v_hat],
+- [x] Phase 1.5 — Outer loop on the paper's followers (done 2026-11-12, ideal attitude D24): choose bases (A16) and behaviour policy/M_j (A17) for delta = [e, v_hat],
       collect data with plant (1) + observer (6) + D14 gravity compensation, train, compare with Figs. 2a,b and 4a,b.
       Plan (2026-11-12): Step 0 re-read PDF → 1 learning problem and maths → 2 bases (A16) → 3 behaviour policy/M_j (A17)
       → 4 data + Alg. 3 training → 5 checks (LQR limit, |mu_k| < beta, held-out residual, seeds) → 6 closed loop vs
@@ -198,7 +200,40 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
           600 windows): quadratic/linear bases critic 1.3e-7, actor 9.9e-8 relative error vs Riccati; Phase 1.5 bases
           (2,4)/(1,3) critic 2.6e-7, actor 1.5e-7, quartic/cubic weights < 1e-4 of the largest; 4 iterations, changes
           1.0e2, 1.5, 1.1e-3, 1.2e-8 (quadratic convergence); cond(N_bar) 1.5e5 → 1.6e6 with the larger basis.
-- [ ] Phase 1.6+ — Inner (attitude) loop, Alg. 4 (Figs. 2c,d), mu → (f_T, Theta_r, omega_r) mapping (A15), closed loop, Figs. 2–9.
+  - [x] Step 3 (2026-11-12): `sim/outer_loop.py` (system, simulate, behaviour policy, collect_dataset), config
+        `learning_outer`, `scripts/collect_outer_data.py`; 7 new tests (99 total) incl. the §5.8 claim checked numerically
+        (after burn-in e_dot = v_hat/x* to 1e-4 and v_hat_dot = mu/m; in the first second |v_hat − v| > 0.1, so the
+        model does not hold there). Data (D26/D27), 6000 windows per follower (wall ~200 s each):
+        follower 2: e_x −0.50…3.28, e_y −2.58…2.43, e_z −2.06…1.86, |v_hat| ≤ 4.3 m/s; |mu_k| > 0.9 beta in 23–25 % of samples;
+        max |v_hat − v| in kept data 3.1e-4 m/s. Follower 3: e_x −0.58…3.24, similar; max |v_hat − v| 2e-14 (kappa = 55).
+        Stated e_x(0) = −0.475 (j = 2) is inside the data; −0.75 (j = 3) slightly outside (min −0.58).
+  - [x] Step 4 (2026-11-12): `scripts/train_outer_loop.py`, Alg. 3 on 6000 windows, 42 unknowns, rank 42, cond(N_bar)
+        5.0e4 (j = 2) / 5.7e4 (j = 3). From K0: converged in 4 iterations (changes 101, 1.6, 1.7e-3, 5e-7 for j = 2).
+        LQR limit: linear actor gains within 0.26 % (j = 2) and 0.19 % (j = 3) of K; quadratic critic weights within 0.4 % of P.
+        Quartic critic weights ≤ 0.35, cubic actor ≤ 0.007 (the constrained correction away from delta = 0).
+        5 random admissible starts (D28) per follower: same weights to ≤ 2e-11, 6–7 iterations. Fig. 2 shows convergence
+        "within several iterations" (settled by ~5–6): consistent.
+        Finding (A28): non-admissible random starts converge to non-stabilising Riccati/HJB solutions (E8).
+  - [x] Steps 5–6 (2026-11-12): `scripts/validate_outer_loop.py`; figures in `results/phase1_5/` (fig2ab_weights_f*,
+        fig4ab_mu_f*, fig7_e_f*; plain diagnostics, palette validated, git-ignored).
+        - Held-out Bellman residual (900 new windows): 7.7e-4 (j = 2), 4.9e-4 (j = 3) relative.
+        - Closed loop 50 s, learned policy, observer from A19 init:
+          stated ICs: max |mu_k| 0.53 / 0.83 N; ||e|| < 0.05 after 8.9 / 11.4 s, < 0.01 after 15.0 / 17.0 s; ||e(50)|| ~1e-6.
+          large error e(0) = [3.2, −1.45, 0]: max |mu_k| 3.2 / 3.3 N; ||e|| < 0.05 after 17.8 s (both).
+          near saturation (same e(0), v_ij(0) = [2, −2, 2]): max |mu_k| 3.2 / 4.4 N, max ||mu||_2 4.1 / 6.2 N (> beta: A2).
+        - Critic V_hat never increases after the 5 s burn-in (all runs): Lyapunov property of eq. (32) holds.
+        - Learned policy cost ≤ LQR-limit tanh policy in every case (e.g. 1352.65 vs 1354.99, j = 3 near saturation):
+          the quartic/cubic terms improve on the small-delta approximation, as the constrained optimum should.
+        - Comparison with the paper: Fig. 2a,b — weights settle in ~5–6 iterations (ours: 4 from K0, 6–7 from random
+          admissible starts), consistent; individual weights not comparable (A16). Fig. 4a,b — paper shows ±5 saturation
+          for < 0.5 s; ours never exceeds 4.4 N. With the learned gain ≈ 1.118/beta = 0.224 on e near 0, mu reaches ±5
+          (tanh ≥ 0.99) only for |e| ≳ 12; Fig. 7 shows e_z(0) ≈ 12 for pair 12, so Fig. 4's saturation matches the
+          PLOTTED initial errors, not the stated positions (A27 explained via A11). Errors converge in ~9–11 s from the
+          stated ICs vs "5–10 s" in the paper: consistent.
+- [ ] Phase 1.6 — Inner (attitude) loop, next. Decide A14 (attitude state coordinates) and A15 (mu → f_T, Theta_r,
+      omega_r) first; then Alg. 4 data/training like 1.5, cascade with the 1.5 outer loop, repeat Fig. 4 with attitude lag
+      (A26 hypothesis), Figs. 2c,d, 4c,d, 8.
+- [ ] Phase 1.7 — Full closed loop (observer + outer + inner), baseline [16] with input clipping, Figs. 2–10.
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
       vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
 
@@ -219,8 +254,11 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
       linear with real eigenvalues (−5.02, −1.23 for pair 12) and the sat term only adds damping, so (6) alone cannot
       oscillate. Hypotheses: the paper fed the observer the commanded mu (not the actual R f e3 during attitude lag), or a
       noisy/differentiated e_dot. Check in the closed-loop phase.
-- [ ] A27: stated ICs keep the outer-loop input at ≤ 0.83 N vs beta = 5, but Fig. 4 saturates; choose the [Eng] large-error
-      validation scenario in Phase 1.5 Step 3.
+- [x] A27: stated ICs keep the outer-loop input at ≤ 0.83 N vs beta = 5, but Fig. 4 saturates. Explained (Phase 1.5): ±5
+      needs |e| ≳ 12, which matches Fig. 7's plotted e_z(0) ≈ 12 (A11), not the stated positions. Validated on stated ICs,
+      a large-error case and a near-saturation case.
+- [ ] A28: "randomly initialized" weights (Sec. VI) vs Alg. 1's admissible initial policy: random non-admissible starts
+      converge to non-stabilising solutions (E8). We use random admissible starts (D28); state in thesis.
 - [ ] A6: sensitivity check of kappa_13 = 55 vs 5 still to do (in closed loop).
 - [ ] Is UWB acceptable under the "communication-free" premise? State the assumption explicitly.
 
@@ -231,6 +269,10 @@ Newest first. Status: Fixed / Open / Workaround.
 
 | # | Date | Where | Symptom | Cause | Fix | Status |
 |---|---|---|---|---|---|---|
+| E10 | 2026-11-12 | Phase 1.5, docs edit | Scripted log edit aborted with `SyntaxError: (unicode error) 'unicodeescape' ... truncated \xXX escape`; nothing written | LaTeX (`\xi`, `\mu`) inside a non-raw Python string (same family as E5) | Re-ran from a file with raw strings; verified LaTeX and no control characters. Rule: LaTeX edits only via raw strings or the editor | Fixed |
+| E9 | 2026-11-12 | Phase 1.5, file edits | A scripted config edit failed its own match check; inspection showed line endings changed in 6 files (YAML CRLF → LF; `equation_map.md`, `config.py`, `outer_loop.py` LF → CRLF) | `sed -i` in Git Bash rewrote the YAML with LF; Python `open(p, 'w')` on Windows writes CRLF | Restored each file to its committed convention (new files LF, the repo majority); scripted edits now read/write bytes and keep the file's own ending | Fixed |
+| E8 | 2026-11-12 | Phase 1.5 Step 4, training | Random initial actor N(0, 0.1²): 2 of 5 runs (follower 2) did not converge in 50 iterations; converged runs ended 60–175 % away from the K0-initialised weights | Each axis converges independently; axes whose initial gain is not stabilising converge to the other three solutions of the per-axis Riccati equation, e.g. K = (−1.118, ±0.723), (1.118, −1.406) for m = 1.3 (matched to 3 decimals by enumerating all ARE solutions). With random cubic weights (std 0.01) 1–2 of 10 admissible-gain starts still failed | Random starts restricted to admissible policies, cubic part 0 (D28, A28): 10/10 seeds per follower reach the K0 solution to 1e-11 | Fixed |
+| E7 | 2026-11-12 | Phase 1.5 Step 3, data prototyping | (a) PD gains (1, 1.5) + 1 N sines: after burn-in |e| < 1 and 0 % of samples near the bound (region too small). (b) Weaker gains / larger low-frequency sines: every run crashed with `ValueError: sphere is not in front of the camera` | Closed-loop DC gain from exploration force to e is 1/k_e; low-frequency sines summing to several N push e_x below −1 (follower passes the leader) | Split exploration into low-frequency (small on x) + high-frequency dither + per-run x bias (D27); verified min e_x ≥ −0.79 over all 40 runs | Fixed |
 | E6 | 2026-11-12 | Phase 1.5, docs edit | `git diff --stat` showed 426 changed lines in RESEARCH_LOG.md for a ~30-line edit | Scripted edit wrote LF; the file is stored with CRLF (other docs are LF) | Rewrote the file with CRLF; diff back to the real change. Scripted edits must keep the existing line endings | Fixed |
 | E5 | 2026-11-11 | Phase 1.4b, docs edit | A scripted Python string replace wrote a backspace character into `equation_map.md` (`\bar` read as `\b` + "ar") and silently skipped one replacement; a `sed` repair then dropped the backslash | Escape sequences in a non-raw Python string; `sed` replacement also consumes `\\` | Fixed both lines with direct edits; checked the file has no control characters left. Use raw strings or the editor for LaTeX text | Fixed |
 | E4 | 2026-11-11 | Phase 1.4a, `docs/equation_map.md` §5.2 | Map claimed U(mu) → ∞ as |mu_k| → beta (wrong maths in our own notes) | U_k = beta² r f(x), f(x) = (1+x)ln(1+x) + (1−x)ln(1−x) → 2 ln 2: bounded. Only dU/dmu diverges | §5.2 corrected; test `test_positive_definite_and_bounded` checks the limit and the diverging gradient | Fixed |
