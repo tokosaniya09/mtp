@@ -69,7 +69,8 @@ simulation:
 engineering:
   gravity_compensation: true   # [Eng] D14: applied thrust vector = mu + m g e3
   e_dot_source: exact          # [Eng] D15: "exact" (simulator truth) or "finite_difference"
-  psi_ref: 0.0                 # [Eng] A15, inferred from Fig. 8 (e_psi(0) = 0.174)
+  psi_ref: 0.0                 # [Eng] A15/D30, inferred from Fig. 8 (e_psi(0) = 0.174)
+  ref_rate_tau: 0.02           # [Eng] D30: filter time constant (s) for d/dt Theta_r (same filter as D20)
   sphere_radius: 0.1           # [Eng] A9, only used for the moment-accuracy check (A8)
   observer_init:               # [Eng] A19
     e_hat: measured            # e_hat(0) = e(0)

@@ -1,6 +1,6 @@
-# Research Log — Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control
+                                                                                                                                                                                                                                                                                                                                                              # Research Log — Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control
 
-Last updated: 2026-11-12
+Last updated: 2026-11-13
 
 This is the canonical research log (decision D12). It continues the earlier external notes (snapshot of 2026-11-10).
 Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision · **[Ours]** our contribution.
@@ -11,7 +11,7 @@ Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision ·
 - **Thesis title:** "Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control"
 - **Core question:** how does a follower quadrotor keep a reliable estimate of its leader's state, and hold
   formation, when its visual measurement of the leader is intermittent?
-- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 done (outer loop, ideal attitude), Phase 1.6 (attitude loop) next.
+- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 done (outer loop, ideal attitude), Phase 1.6 (attitude loop) in progress (D29, D30).
 
 ## Base paper
 
@@ -79,6 +79,8 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D30 | 2026-11-13 | [Eng] A15: thrust-vector decomposition. F = mu + m_j g e3 (D14); f_T = \|F\|; body axis R e3 = F/\|F\|; psi_r = 0; (phi_r, theta_r) from R e3 under ZYX (A13); omega_r = body rate of the reference, W(Theta_r)^-1 times the filtered derivative of Theta_r (filter as D20); yaw error wrapped to (−pi, pi] | Paper gives no mapping; this is the standard cascade decomposition (a verified citation is still to be added). Fig. 8 e_psi(0) = psi(0) = 0.174 implies psi_r = 0; \|mu\| <= 5 < m g gives f_T > 0 and tilt <= arcsin(beta/(m g)) = 23.1° / 14.8° (corrected, E11); chi "unknown" fits a numerically generated reference | `controllers/thrust_mapping.py` (to build); reference rates feed the A14 error coordinates | Decided (user approved 2026-11-13) |
+| D29 | 2026-11-13 | [Eng] A14: attitude state in tracking-error coordinates z = [Theta − Theta_r; omega − omega_r; Theta_r; omega_r] in R^12; G as printed; S = 10 I_12, D = 8 I_3, gamma = 1 unchanged | Literal z with block-diagonal S gives a separable V*, so u* cannot depend on Theta_r (it would level the vehicle and never track). This contradicts the Sec. V aim and Fig. 8 (tracking errors). Reference block of the cost is finite only because Theta_r, omega_r → 0 for the constant-velocity leader (revisit for accelerating leaders in Phase 2) | Attitude data/learner use error coordinates; Fig. 8 compared directly | Decided (user approved 2026-11-13) |
 | D28 | 2026-11-12 | [Eng] A28: "randomly initialized" actor weights (Sec. VI) are drawn from ADMISSIBLE policies only: per-axis linear gains k_e, k_v ~ U(0.2, 2) > 0, cubic weights 0 (a tanh-saturated PD with positive gains stabilises a double integrator). Reference run starts from the behaviour gain K0 | Alg. 1 Step 1 requires an admissible mu^(0). Measured: unconstrained random N(0, 0.1²) starts converge per axis to the 3 non-stabilising Riccati solutions (E8); random cubic terms (std 0.01) still made 1–2 of 10 starts fail | `scripts/train_outer_loop.py`, config `init_gain_range`, `init_cubic_std` | Decided |
 | D27 | 2026-11-12 | [Eng] Refines D26 exploration after prototyping: e(t) = b + low-frequency sines (0.2–1.1 rad/s; x 0.3 N, y/z 1.2 N each) + high-frequency dither (2.3, 3.7, 5.3 rad/s; 5 N each); b_x drawn per run in [−0.4, 3] N (b_y = b_z = 0); e_x(0) in [−0.8, 3.5], e_y,z(0) in [−3, 3]; 20 runs × 20 s, 5 s burn-in. All values in config `learning_outer` | With PD gain k_e the closed-loop DC gain from exploration force to e is 1/k_e, so low-frequency excitation of a few N drove e_x < −1 (sphere behind camera, E7); dither saturates mu while barely moving e; the bias spreads runs over depth errors −0.5…3.3 (covers stated ICs and the A27 case) | `sim/outer_loop.py`, `config.py` (`OuterLearningConfig`), `scripts/collect_outer_data.py`; `sum_of_sinusoids` accepts (Q, m) amplitudes | Decided |
 | D26 | 2026-11-12 | [Eng] A17/A27 data for the outer loop (Phase 1.5 Step 3): data system = paper leader + ideal-attitude follower (D24) + observer (6) with exact e_dot + D14; each 20 s run drops its first 5 s (observer burn-in) from the training windows; behaviour mu = beta tanh((−K0 delta + sum of sinusoids)/beta), K0 = [1.0, 1.5] per axis; data region up to \|e_k\| ≈ 3.5, \|v_hat_k\| ≈ 3 m/s; ~20 runs (~6000 windows); actor init from K0 and from random seeds; extra large-error validation case e(0) ≈ [3.2, −1.45, 0] (pair 12, Fig. 7 x/y) | Learner assumes delta follows e_dot = v_hat/x*, which is false while v_hat converges (~4.5 s, Phase 1.3); dropping the burn-in keeps A19 and the observer unchanged; tanh keeps the behaviour input within ±beta; the region reaches saturation (A27) | `sim/outer_loop_data.py` (to build); rank/condition logged | Decided (user approved option A 2026-11-12) |
@@ -230,8 +232,14 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
           (tanh ≥ 0.99) only for |e| ≳ 12; Fig. 7 shows e_z(0) ≈ 12 for pair 12, so Fig. 4's saturation matches the
           PLOTTED initial errors, not the stated positions (A27 explained via A11). Errors converge in ~9–11 s from the
           stated ICs vs "5–10 s" in the paper: consistent.
-- [ ] Phase 1.6 — Inner (attitude) loop, next. Decide A14 (attitude state coordinates) and A15 (mu → f_T, Theta_r,
-      omega_r) first; then Alg. 4 data/training like 1.5, cascade with the 1.5 outer loop, repeat Fig. 4 with attitude lag
+- [ ] Phase 1.6 — Inner (attitude) loop, current. A14 → D29 (error coordinates), A15 → D30 (thrust-vector
+      decomposition) decided 2026-11-13.
+      - [x] Step 1 (2026-11-13): `controllers/thrust_mapping.py` (D30) + `tests/test_thrust_mapping.py` (20 tests pass).
+            Round trip f_T R(Theta_r) e3 = F to 1e-12; max tilt arcsin(beta/(m g)) = 23.1° / 14.8° (E11); omega_r vs an
+            independent R^T R_dot truth: 0.07 % (raw difference), 2.8 % (tau = 0.02 s lag) of max |omega_r| = 0.29 rad/s.
+            Config: `engineering.ref_rate_tau = 0.02`.
+      - [ ] Step 2: attitude learning problem in D29 coordinates (derivation in equation map §6) + attitude bases (A16).
+      - [ ] Step 3: attitude data (reference signals + behaviour torque, A17 analogue). Then Alg. 4 data/training like 1.5, cascade with the 1.5 outer loop, repeat Fig. 4 with attitude lag
       (A26 hypothesis), Figs. 2c,d, 4c,d, 8.
 - [ ] Phase 1.7 — Full closed loop (observer + outer + inner), baseline [16] with input clipping, Figs. 2–10.
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
@@ -245,7 +253,7 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
 - [ ] Target venue (conference or journal) and paper deadline.
 - [x] Gravity vs beta (A1): resolved by D14.
 - [x] Source of e_dot in the observer (A4): resolved by D15.
-- [ ] A14/A15: attitude state coordinates (literal z vs tracking errors) and the mu -> (f_T, Theta_r, omega_r) mapping.
+- [x] A14/A15: resolved by D29 (tracking-error coordinates) and D30 (thrust-vector decomposition, psi_r = 0).
 - [ ] A11: Figs. 7/9 initial values inconsistent with stated initial conditions; validation will compare behaviour, not t=0 values.
 - [ ] Remaining A-items (A2, A3, A6, A8–A10, A12, A13, A16–A20) have proposed resolutions in `docs/equation_map.md` §9.
 - [ ] A25: Fig. 5 starts at ||e~_12(0)|| ≈ 8.8 and ||e~_13(0)|| ≈ 1.7, while ||e_12(0)|| ≈ 0.64; the paper's e_hat(0) is unknown
@@ -270,6 +278,8 @@ Newest first. Status: Fixed / Open / Workaround.
 | # | Date | Where | Symptom | Cause | Fix | Status |
 |---|---|---|---|---|---|---|
 | E10 | 2026-11-12 | Phase 1.5, docs edit | Scripted log edit aborted with `SyntaxError: (unicode error) 'unicodeescape' ... truncated \xXX escape`; nothing written | LaTeX (`\xi`, `\mu`) inside a non-raw Python string (same family as E5) | Re-ran from a file with raw strings; verified LaTeX and no control characters. Rule: LaTeX edits only via raw strings or the editor | Fixed |
+| E11 | 2026-11-13 | Phase 1.6 Step 1, D30 wording | Max tilt claimed as arctan(beta/(m g)) = 21.4° / 14.3° (also told to the user) | That is the tilt for a horizontal mu only. Over the ball \|mu\| <= beta the tilt is largest when mu is tangent to the sphere around m g e3, giving sin(tilt) = beta/(m g) | Corrected to arcsin(beta/(m g)) = 23.1° (Quad 2), 14.8° (Quad 3), checked by a brute-force sweep; `test_tilt_bound` asserts both the bound and that it is attained | Fixed |
+| E10 | 2026-11-13 | Phase 1.6, docs edit (D29/D30) | `git diff --stat` showed 565 changed lines in RESEARCH_LOG.md for a ~10-line edit; one `sed` status substitution in `equation_map.md` silently did not match | Repeat of E6: `sed -i` rewrote the CRLF log with LF. The second sed pattern's LaTeX escaping did not match the text | Restored CRLF from bytes (diff back to 15 lines); made the unmatched edit with the editor. Rule restated: no `sed -i` on `docs/`, use the editor | Fixed |
 | E9 | 2026-11-12 | Phase 1.5, file edits | A scripted config edit failed its own match check; inspection showed line endings changed in 6 files (YAML CRLF → LF; `equation_map.md`, `config.py`, `outer_loop.py` LF → CRLF) | `sed -i` in Git Bash rewrote the YAML with LF; Python `open(p, 'w')` on Windows writes CRLF | Restored each file to its committed convention (new files LF, the repo majority); scripted edits now read/write bytes and keep the file's own ending | Fixed |
 | E8 | 2026-11-12 | Phase 1.5 Step 4, training | Random initial actor N(0, 0.1²): 2 of 5 runs (follower 2) did not converge in 50 iterations; converged runs ended 60–175 % away from the K0-initialised weights | Each axis converges independently; axes whose initial gain is not stabilising converge to the other three solutions of the per-axis Riccati equation, e.g. K = (−1.118, ±0.723), (1.118, −1.406) for m = 1.3 (matched to 3 decimals by enumerating all ARE solutions). With random cubic weights (std 0.01) 1–2 of 10 admissible-gain starts still failed | Random starts restricted to admissible policies, cubic part 0 (D28, A28): 10/10 seeds per follower reach the K0 solution to 1e-11 | Fixed |
 | E7 | 2026-11-12 | Phase 1.5 Step 3, data prototyping | (a) PD gains (1, 1.5) + 1 N sines: after burn-in |e| < 1 and 0 % of samples near the bound (region too small). (b) Weaker gains / larger low-frequency sines: every run crashed with `ValueError: sphere is not in front of the camera` | Closed-loop DC gain from exploration force to e is 1/k_e; low-frequency sines summing to several N push e_x below −1 (follower passes the leader) | Split exploration into low-frequency (small on x) + high-frequency dither + per-run x bias (D27); verified min e_x ≥ −0.79 over all 40 runs | Fixed |

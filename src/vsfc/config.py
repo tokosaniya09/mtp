@@ -157,6 +157,7 @@ class CaseStudy:
     gravity_compensation: bool
     e_dot_source: str
     psi_ref: float
+    ref_rate_tau: float
     sphere_radius: float
     observer_init: dict
     learning_outer: OuterLearningConfig
@@ -226,6 +227,7 @@ def load_case_study(path: str | Path = DEFAULT_CONFIG) -> CaseStudy:
         gravity_compensation=bool(eng["gravity_compensation"]),
         e_dot_source=eng["e_dot_source"],
         psi_ref=float(eng["psi_ref"]),
+        ref_rate_tau=_positive(eng["ref_rate_tau"], "ref_rate_tau"),
         sphere_radius=_positive(eng["sphere_radius"], "sphere_radius"),
         observer_init=dict(eng["observer_init"]),
         learning_outer=_outer_learning(raw["learning_outer"]),
