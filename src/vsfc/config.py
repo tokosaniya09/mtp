@@ -85,6 +85,67 @@ class FollowerConfig:
 
 
 @dataclass(frozen=True)
+class OuterDataConfig:
+    """[Eng, D26] data collection for Alg. 3, outer loop (Phase 1.5). See `sim/outer_loop.collect_dataset`."""
+
+    n_runs: int
+    run_length: float          # s
+    burn_in: float             # s, dropped from the start of each run
+    k_e: float                 # behaviour PD gain on e_k, N
+    k_v: float                 # behaviour PD gain on v_hat_k, N s/m
+    explore_freqs: np.ndarray  # (Q,) rad/s
+    explore_amplitude: np.ndarray  # (Q, 3) N
+    bias_low: np.ndarray       # (3,) N
+    bias_high: np.ndarray      # (3,) N
+    e0_low: np.ndarray         # (3,)
+    e0_high: np.ndarray        # (3,)
+    v0_max: float              # m/s
+    seed: int
+
+
+@dataclass(frozen=True)
+class OuterLearningConfig:
+    """[Eng, D25-D28] Alg. 3 settings for the visual-servoing loop."""
+
+    critic_degrees: tuple
+    actor_degrees: tuple
+    max_iter: int
+    init_seeds: tuple
+    init_gain_range: tuple      # (2,) N, positive
+    init_cubic_std: float
+    data: OuterDataConfig
+    large_error_e0: np.ndarray  # (3,)
+    near_saturation_v0: np.ndarray  # (3,) m/s
+
+
+def _outer_learning(d: dict) -> OuterLearningConfig:
+    dd = d["data"]
+    freqs = np.asarray(dd["explore_freqs"], float)
+    amp = np.asarray(dd["explore_amplitude"], float)
+    if amp.shape != (freqs.size, 3):
+        raise ValueError(f"explore_amplitude: expected ({freqs.size}, 3), got {amp.shape}")
+    lo, hi = _vec(dd["bias_low"], 3, "bias_low"), _vec(dd["bias_high"], 3, "bias_high")
+    e_lo, e_hi = _vec(dd["e0_low"], 3, "e0_low"), _vec(dd["e0_high"], 3, "e0_high")
+    if np.any(lo > hi) or np.any(e_lo > e_hi):
+        raise ValueError("low bounds must not exceed high bounds")
+    data = OuterDataConfig(
+        n_runs=int(dd["n_runs"]), run_length=_positive(dd["run_length"], "run_length"),
+        burn_in=float(dd["burn_in"]), k_e=_positive(dd["k_e"], "k_e"), k_v=_positive(dd["k_v"], "k_v"),
+        explore_freqs=freqs, explore_amplitude=amp, bias_low=lo, bias_high=hi, e0_low=e_lo, e0_high=e_hi,
+        v0_max=float(dd["v0_max"]), seed=int(dd["seed"]))
+    if data.burn_in < 0 or data.burn_in >= data.run_length or data.n_runs < 1:
+        raise ValueError("need 0 <= burn_in < run_length and n_runs >= 1")
+    return OuterLearningConfig(
+        critic_degrees=tuple(int(x) for x in d["critic_degrees"]),
+        actor_degrees=tuple(int(x) for x in d["actor_degrees"]),
+        max_iter=int(d["max_iter"]), init_seeds=tuple(int(x) for x in d["init_seeds"]),
+        init_gain_range=tuple(_positive(x, "init_gain_range") for x in d["init_gain_range"]),
+        init_cubic_std=float(d["init_cubic_std"]), data=data,
+        large_error_e0=_vec(d["large_error_e0"], 3, "large_error_e0"),
+        near_saturation_v0=_vec(d["near_saturation_v0"], 3, "near_saturation_v0"))
+
+
+@dataclass(frozen=True)
 class CaseStudy:
     g: float
     leader: LeaderConfig
@@ -98,6 +159,7 @@ class CaseStudy:
     psi_ref: float
     sphere_radius: float
     observer_init: dict
+    learning_outer: OuterLearningConfig
 
 
 def _follower(d: dict) -> FollowerConfig:
@@ -166,4 +228,5 @@ def load_case_study(path: str | Path = DEFAULT_CONFIG) -> CaseStudy:
         psi_ref=float(eng["psi_ref"]),
         sphere_radius=_positive(eng["sphere_radius"], "sphere_radius"),
         observer_init=dict(eng["observer_init"]),
+        learning_outer=_outer_learning(raw["learning_outer"]),
     )

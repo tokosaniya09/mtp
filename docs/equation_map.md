@@ -5,7 +5,7 @@ Phase 0.1 deliverable. Source of truth: `papers/base_paper.pdf`. Every equation 
 **[Derived]** = algebra we did ourselves to check or expand a step the paper skips (each one marked so it can be
 re-checked) · **[Ours]** = research contribution (none in this document).
 
-Ambiguities are numbered **A1–A27** (Section 9). A proposed resolution is *not adopted* until the component that
+Ambiguities are numbered **A1–A28** (Section 9). A proposed resolution is *not adopted* until the component that
 needs it is implemented and the decision is logged in `docs/RESEARCH_LOG.md`.
 
 Indices: leader `i`, follower `j`. Case study: leader 1, followers 2 and 3 (pairs 12, 13).
@@ -400,6 +400,9 @@ $\max|\mu_k| = 0.53$ N (j = 2, $e(0)=[-0.475,-0.425,0]$) and 0.83 N (j = 3, $e(0
 $\beta=5$; $\|e\|<0.05$ after 9.0 s / 11.4 s. Fig. 4 saturates at ±5. So the saturation in Fig. 4 cannot come from
 the stated initial conditions (consistent with A11). Plan: train on a data region that includes large errors,
 validate on (i) the stated initial conditions and (ii) an [Eng] large-error scenario that drives $\mu$ into saturation.
+**Resolved (Phase 1.5):** near $\delta=0$ the learned $\xi_k\approx0.224\,e_k+\dots$, so $|\mu_k|\to\beta$ ($\tanh\ge0.99$) needs
+$|e_k|\gtrsim12$; Fig. 7 plots $e_z(0)\approx12$ for pair 12. Fig. 4's saturation therefore matches the plotted (not the
+stated) initial errors (A11).
 
 ---
 
@@ -538,4 +541,5 @@ is built; **Note** = no action, but it must be stated in the thesis.
 | A24 | Value of $g$ not stated | Sec. VI | $g=9.81$ m/s² | Proposed |
 | A25 | Fig. 5: $\|\tilde e_{12}(0)\|\approx8.8$, $\|\tilde e_{13}(0)\|\approx1.7$, but $\|e_{12}(0)\|\approx0.64$, so the paper's $\hat e(0)$ is unknown | Fig. 5 | Keep A19 ($\hat e(0)=e(0)$); compare behaviour, not $t=0$ values | Open |
 | A26 | Fig. 5 $\|\tilde v_{12}\|$ oscillates; with exact $\dot e$ and true thrust, (7) is linear with real eigenvalues ($-5.02,-1.23$ for pair 12) and sat only adds damping, so (6) alone cannot oscillate | Fig. 5, (7) | Hypothesis: paper fed commanded $\mu$ (attitude lag) or a differentiated/noisy $\dot e$; test in closed loop | Open |
-| A27 | With the stated initial conditions the outer-loop input stays far from the bound: the LQR-limit policy peaks at 0.53 N / 0.83 N vs $\beta=5$, yet Fig. 4 shows saturation at ±5 in the first 0.5 s | Sec. VI, Fig. 4, §5.8 Consequence 4 | Validate on the stated ICs AND on an [Eng] large-error scenario that saturates $\mu$; the data region for learning must cover large errors | Open |
+| A27 | With the stated initial conditions the outer-loop input stays far from the bound: the LQR-limit policy peaks at 0.53 N / 0.83 N vs $\beta=5$, yet Fig. 4 shows saturation at ±5 in the first 0.5 s | Sec. VI, Fig. 4, §5.8 Consequence 4 | Validate on the stated ICs AND on an [Eng] large-error scenario that saturates $\mu$; the data region for learning must cover large errors | Explained: ±5 needs $|e|\gtrsim12$ = Fig. 7's plotted $e_z(0)$ (A11); validated on stated, large-error, near-saturation cases (Phase 1.5) |
+| A28 | Sec. VI: NN weights "randomly initialized"; Alg. 1 Step 1 needs an admissible $\mu^{(0)}$ | Phase 1.5: random $N(0,0.1^2)$ actor starts converge per axis to the non-stabilising Riccati solutions (E8) | Random starts drawn from admissible policies (positive per-axis linear gains, cubic 0) (D28) | Decided |

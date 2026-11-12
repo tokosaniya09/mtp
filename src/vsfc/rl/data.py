@@ -113,12 +113,14 @@ def rollout(f: Callable[[float, np.ndarray, np.ndarray], np.ndarray],
     return t, X, delta, np.array(U)
 
 
-def sum_of_sinusoids(amplitude: float, frequencies, m: int, seed: int = 0):
-    """[Eng] A17 exploration signal: e(t)_k = amplitude * sum_q sin(omega_q t + phi_{q,k}), random phases.
+def sum_of_sinusoids(amplitude, frequencies, m: int, seed: int = 0):
+    """[Eng] A17 exploration signal: e(t)_k = sum_q A_{q,k} sin(omega_q t + phi_{q,k}), random phases.
 
+    amplitude: scalar, (m,) per channel, or (Q, m) per frequency and channel (D26).
     Returns a function t -> (m,). Used as the additive excitation of the behaviour policy.
     """
     rng = np.random.default_rng(seed)
     w = np.asarray(frequencies, float)
     phase = rng.uniform(0.0, 2.0 * np.pi, size=(w.size, m))
-    return lambda t: amplitude * np.sin(w[:, None] * t + phase).sum(axis=0)
+    A = np.broadcast_to(np.asarray(amplitude, float), (w.size, m))
+    return lambda t: (A * np.sin(w[:, None] * t + phase)).sum(axis=0)
