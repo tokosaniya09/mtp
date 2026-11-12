@@ -1,6 +1,6 @@
 # Research Log — Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control
 
-Last updated: 2026-11-11
+Last updated: 2026-11-12
 
 This is the canonical research log (decision D12). It continues the earlier external notes (snapshot of 2026-11-10).
 Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision · **[Ours]** our contribution.
@@ -11,7 +11,7 @@ Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision ·
 - **Thesis title:** "Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control"
 - **Core question:** how does a follower quadrotor keep a reliable estimate of its leader's state, and hold
   formation, when its visual measurement of the leader is intermittent?
-- **Current phase:** Phase 0 (scoping and setup).
+- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 in progress.
 
 ## Base paper
 
@@ -79,6 +79,9 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D26 | 2026-11-12 | [Eng] A17/A27 data for the outer loop (Phase 1.5 Step 3): data system = paper leader + ideal-attitude follower (D24) + observer (6) with exact e_dot + D14; each 20 s run drops its first 5 s (observer burn-in) from the training windows; behaviour mu = beta tanh((−K0 delta + sum of sinusoids)/beta), K0 = [1.0, 1.5] per axis; data region up to \|e_k\| ≈ 3.5, \|v_hat_k\| ≈ 3 m/s; ~20 runs (~6000 windows); actor init from K0 and from random seeds; extra large-error validation case e(0) ≈ [3.2, −1.45, 0] (pair 12, Fig. 7 x/y) | Learner assumes delta follows e_dot = v_hat/x*, which is false while v_hat converges (~4.5 s, Phase 1.3); dropping the burn-in keeps A19 and the observer unchanged; tanh keeps the behaviour input within ±beta; the region reaches saturation (A27) | `sim/outer_loop_data.py` (to build); rank/condition logged | Decided (user approved option A 2026-11-12) |
+| D25 | 2026-11-12 | [Eng] A16 for the outer loop: per-axis bases. Critic = for each axis k, all degree-2 and degree-4 monomials in (e_k, v_hat_k) (8 per axis, l_c = 24); actor channel k = degree-1 and degree-3 monomials in (e_k, v_hat_k) (l_a = 6, 18 actor weights). Learner extended to per-channel actor bases sigma_a,k as in eq. (24), equal size l_a; shared basis (D23) still supported | Exact V* separates by axis and xi_k depends only on (e_k, v_hat_k) (§5.8); quartic/cubic terms let V depart from quadratic where mu saturates; counts 24/18 are close to Fig. 2a,b (~15–25 / ~15–20 traces) | `rl/basis.py` (`MonomialBasis`, `grouped_basis`, `axis_groups`), `rl/offpolicy_irl.py`; 10 new tests | Decided (user approved 2026-11-12) |
+| D24 | 2026-11-12 | [Eng] Phase 1.5 trains and tests the outer loop with ideal attitude: applied force = mu + m_j g e3 enters the translational part of (1) directly; the inner loop joins in 1.6 | Isolates Alg. 3 (as the paper presents it) so mismatches trace to the outer loop; attitude lag would mix in | Fig. 4a,b comparison repeated with the full cascade in 1.6 | Decided (user confirmed 2026-11-12) |
 | D23 | 2026-11-11 | [Eng] Off-policy learner (Phase 1.4b): one actor basis shared by the m input channels; (29) solved by SVD `lstsq` (same minimiser as (N^T N)^-1 N^T T at full rank), rank/condition/RMS logged per iteration and `train` raises on rank deficiency; input ZOH over h, so int mu sigma is integrated exactly per sub-step, other integrals by trapezoid on the 1 ms grid (A18 → Decided); A3 → Decided (r_{k1,k2} = [R]_{k1k2}, verified against the PDF and the LQR test) | Simplest faithful form of (27)–(29); SVD avoids squaring the condition number; ZOH matches the plant integrator | `rl/data.py`, `rl/offpolicy_irl.py`; quadrotor bases (A16) and behaviour policy (A17) still to choose in 1.5 | Decided |
 | D22 | 2026-11-11 | [Eng] RL utility/basis (Phase 1.4a): R must be diagonal (r passed as a vector); ln(1 − tanh²ξ) in eq. (26) evaluated as −2 ln cosh ξ (stable form); `PolynomialBasis` is generic and the degree sets are chosen later (A16, Phase 1.4b/1.5) | The literal ln(1 − tanh²ξ) underflows to −inf for |ξ| > ~19; (13) is only path-independent for diagonal R; Fig. 2 must guide the basis choice | `rl/utility.py`, `rl/basis.py` | Decided |
 | D21 | 2026-11-11 | [Eng] Phase 1.3 validated in open loop (follower = eq. (1) with a prescribed near-hover thrust/torque excitation, no controller yet); Fig. 5 is compared on behaviour only, and the closed-loop comparison is repeated once the controller exists | Fig. 5 is closed-loop; its initial errors (A25) and oscillations (A26) cannot come from eq. (6) alone | `sim/observer_openloop.py`, `scripts/validate_observer.py`; revisit Fig. 5 in the closed-loop phase | Decided |
@@ -158,13 +161,48 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
       falls as the basis grows.
       Finding (A17): with on-policy data (mu = mu^(n)) the actor columns of N_bar vanish, so the behaviour policy must
       carry exploration; the paper's "admissible control policy" alone is not enough.
+      Committed as 8831e0f.
 - [ ] Phase 1.5 — Outer loop on the paper's followers: choose bases (A16) and behaviour policy/M_j (A17) for delta = [e, v_hat],
       collect data with plant (1) + observer (6) + D14 gravity compensation, train, compare with Figs. 2a,b and 4a,b.
+      Plan (2026-11-12): Step 0 re-read PDF → 1 learning problem and maths → 2 bases (A16) → 3 behaviour policy/M_j (A17)
+      → 4 data + Alg. 3 training → 5 checks (LQR limit, |mu_k| < beta, held-out residual, seeds) → 6 closed loop vs
+      Figs. 2a,b/4a,b → 7 log + commit. Attitude in 1.5: ideal (thrust vector applied directly), D24 (Decided).
+  - [x] Step 0 (2026-11-12): Sec. IV (eqs. 10–27), Sec. VI, Figs. 2, 4 re-read from rendered pages (p. 3543–3544, 3547–3548).
+        - Eq. (10) re-checked: A7 still stands (A_j depends on e~, zeta_bar, e_dot; first block uses v_hat).
+        - Known answer: with the observer converged and D14, (10) becomes per axis e_dot = v_hat/x*, v_hat_dot = mu/m.
+          LQR (x* = 4, Q = 10 I6, R = 8 I3) gives per-axis P = [[50.30, 11.63], [11.63, 14.62]], K = [1.118, 1.406] (m = 1.3)
+          and P = [[55.06, 17.89], [17.89, 24.62]], K = [1.118, 1.539] (m = 2). Closed-loop poles −0.26, −0.82 and −0.29, −0.48.
+          The learned policy must match this near delta = 0 (tanh policy ≈ linear, U ≈ mu^T R mu).
+        - Fig. 2a: about 15–25 critic traces (overlapping; not countable exactly), converged by iteration ~5–6, plotted to
+          iteration 11; final weights include large negative values (≈ −47, −33, −13). A diagonal-dominant quadratic
+          critic (LQR above: all three per-axis weights positive) cannot produce these, so the paper's basis/ordering is not
+          a plain quadratic in [e, v_hat]. Fig. 2 also does not say which follower it shows. → Compare iteration count and
+          convergence shape, not individual weights (A16).
+        - Fig. 2b: about 15–20 actor traces, final values within ±1.7; LQR-limit actor gains K/beta ≈ 0.22–0.31.
+        - Fig. 4b inset: at t ≈ 0.1 s one component ≈ +5 while another ≈ +3, so ||mu_3||_2 ≈ 5.8 > beta = 5. Confirms the
+          bound is per component (A2), as the tanh formula gives.
+        - Fig. 4: early saturation at ±5 (purple component) for < 0.5 s, then mu → 0 within ~10 s (both followers).
+  - [x] Step 1 (2026-11-12): learning problem written out in `docs/equation_map.md` §5.8 (variables, frames, units).
+        - Once observer errors decay (they do not depend on mu), delta follows three decoupled double integrators
+          e_dot = v_hat/x*, v_hat_dot = mu/m. Q, R, U also separate by axis, so V*(delta) = sum_k V1(e_k, v_hat_k) with one
+          2-D function, and xi_k depends only on (e_k, v_hat_k). This guides the basis (A16, Step 2).
+        - Near delta = 0 the learned controller must equal the LQR values above.
+        - Finding (A27): scratch run with the LQR-limit tanh policy + real observer gives max |mu_k| = 0.53 N (j = 2) and
+          0.83 N (j = 3) from the stated initial conditions, vs beta = 5; Fig. 4 saturates at ±5. Saturation in Fig. 4 cannot
+          come from the stated ICs (consistent with A11). Validate on stated ICs and on an [Eng] large-error scenario.
+  - [x] Step 2 (2026-11-12): bases (D25) + per-channel actor bases in the learner. 92 tests pass (10 new).
+        - `MonomialBasis` (explicit exponents), `PolynomialBasis` now a subclass (unchanged behaviour), `grouped_basis`,
+          `axis_groups`; `weights_from_quadratic_form` now rejects P entries the basis cannot represent.
+        - Shared-basis path unchanged: all 82 earlier tests pass; per-channel identical bases reproduce the shared rows to 1e-13.
+        - Known answer on the linearised outer loop (3 double integrators, x* = 4, m = 1.3, Q = 10 I6, R = 8 I3, beta = 1000,
+          600 windows): quadratic/linear bases critic 1.3e-7, actor 9.9e-8 relative error vs Riccati; Phase 1.5 bases
+          (2,4)/(1,3) critic 2.6e-7, actor 1.5e-7, quartic/cubic weights < 1e-4 of the largest; 4 iterations, changes
+          1.0e2, 1.5, 1.1e-3, 1.2e-8 (quadratic convergence); cond(N_bar) 1.5e5 → 1.6e6 with the larger basis.
 - [ ] Phase 1.6+ — Inner (attitude) loop, Alg. 4 (Figs. 2c,d), mu → (f_T, Theta_r, omega_r) mapping (A15), closed loop, Figs. 2–9.
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
       vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
 
-**Planned phases:** 0 Scoping/setup (current) → 1 Faithful reproduction → 2 Our contribution → 3 Evaluation and writing.
+**Planned phases:** 0 Scoping/setup (done) → 1 Faithful reproduction (current) → 2 Our contribution → 3 Evaluation and writing.
 
 ## Open questions and pending inputs
 
@@ -181,6 +219,8 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
       linear with real eigenvalues (−5.02, −1.23 for pair 12) and the sat term only adds damping, so (6) alone cannot
       oscillate. Hypotheses: the paper fed the observer the commanded mu (not the actual R f e3 during attitude lag), or a
       noisy/differentiated e_dot. Check in the closed-loop phase.
+- [ ] A27: stated ICs keep the outer-loop input at ≤ 0.83 N vs beta = 5, but Fig. 4 saturates; choose the [Eng] large-error
+      validation scenario in Phase 1.5 Step 3.
 - [ ] A6: sensitivity check of kappa_13 = 55 vs 5 still to do (in closed loop).
 - [ ] Is UWB acceptable under the "communication-free" premise? State the assumption explicitly.
 
@@ -191,6 +231,7 @@ Newest first. Status: Fixed / Open / Workaround.
 
 | # | Date | Where | Symptom | Cause | Fix | Status |
 |---|---|---|---|---|---|---|
+| E6 | 2026-11-12 | Phase 1.5, docs edit | `git diff --stat` showed 426 changed lines in RESEARCH_LOG.md for a ~30-line edit | Scripted edit wrote LF; the file is stored with CRLF (other docs are LF) | Rewrote the file with CRLF; diff back to the real change. Scripted edits must keep the existing line endings | Fixed |
 | E5 | 2026-11-11 | Phase 1.4b, docs edit | A scripted Python string replace wrote a backspace character into `equation_map.md` (`\bar` read as `\b` + "ar") and silently skipped one replacement; a `sed` repair then dropped the backslash | Escape sequences in a non-raw Python string; `sed` replacement also consumes `\\` | Fixed both lines with direct edits; checked the file has no control characters left. Use raw strings or the editor for LaTeX text | Fixed |
 | E4 | 2026-11-11 | Phase 1.4a, `docs/equation_map.md` §5.2 | Map claimed U(mu) → ∞ as |mu_k| → beta (wrong maths in our own notes) | U_k = beta² r f(x), f(x) = (1+x)ln(1+x) + (1−x)ln(1−x) → 2 ln 2: bounded. Only dU/dmu diverges | §5.2 corrected; test `test_positive_definite_and_bounded` checks the limit and the diverging gradient | Fixed |
 | E3 | 2026-11-11 | Phase 1.3, `test_finite_difference_error_is_filter_lag` | Assertion failed: pointwise ratio |v~|/|a_ij| = 0.0154 < 0.8·(tau+h) = 0.0176 at t = 6 s | Test model too crude: the lag error is filtered by the observer's slow mode (~1.2 rad/s) while a_ij oscillates at 1.3 rad/s, so the pointwise ratio swings 0.013–0.026 | Test now checks the 4–10 s mean ratio (within ±25 % of tau+h) and the scaling with tau (0.02 vs 0.05); code unchanged | Fixed |

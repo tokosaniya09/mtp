@@ -13,7 +13,7 @@ import pytest
 from scipy.linalg import solve_continuous_are, solve_continuous_lyapunov
 from scipy.optimize import brentq
 
-from vsfc.rl.basis import PolynomialBasis, weights_from_quadratic_form
+from vsfc.rl.basis import PolynomialBasis, axis_groups, grouped_basis, weights_from_quadratic_form
 from vsfc.rl.data import OffPolicyDataset, rollout, sum_of_sinusoids
 from vsfc.rl.offpolicy_irl import (IRLProblem, actor_xi, bellman_rows, critic_value, policy, solve_weights,
                                    train)
@@ -207,3 +207,69 @@ def test_actor_xi_and_policy_shapes(lqr):
     x = np.array([[0.1, 0.2, 0.3], [1.0, 0.0, -1.0]])
     assert actor_xi(prob, K / BETA, x).shape == (2, 2)
     np.testing.assert_allclose(policy(prob, K / BETA, x[0]), -K @ x[0], rtol=1e-6)
+
+# ---- per-channel actor bases, eq. (24) (D25) -------------------------------------------------------------
+
+def test_per_channel_identical_bases_equal_shared(lqr):
+    data, prob, _, _ = lqr
+    per = IRLProblem(prob.critic, [PolynomialBasis(3, (1,)), PolynomialBasis(3, (1,))], BETA, r, Q)
+    N1, T1 = bellman_rows(data, prob, K0 / BETA)
+    N2, T2 = bellman_rows(data, per, K0 / BETA)
+    np.testing.assert_allclose(N2, N1, rtol=1e-13, atol=1e-13)
+    np.testing.assert_allclose(T2, T1, rtol=1e-13)
+    x = np.array([0.4, -1.0, 2.0])
+    np.testing.assert_allclose(actor_xi(per, K0 / BETA, x), actor_xi(prob, K0 / BETA, x))
+
+
+def test_per_channel_validation():
+    with pytest.raises(ValueError):          # wrong number of actor bases
+        IRLProblem(PolynomialBasis(3, (2,)), [PolynomialBasis(3, (1,))], 1.0, [1.0, 1.0], np.eye(3))
+    with pytest.raises(ValueError):          # unequal l_a
+        IRLProblem(PolynomialBasis(3, (2,)), [PolynomialBasis(3, (1,)), PolynomialBasis(3, (1, 2))],
+                   1.0, [1.0, 1.0], np.eye(3))
+
+
+# Outer-loop linearisation of Phase 1.5 (docs/equation_map.md §5.8): per axis e_dot = v/x*, v_dot = mu/m.
+XS, MASS, QS, RS = 4.0, 1.3, 10.0, 8.0
+A6 = np.zeros((6, 6)); A6[:3, 3:] = np.eye(3) / XS
+B6 = np.zeros((6, 3)); B6[3:] = np.eye(3) / MASS
+K06 = np.hstack([1.0 * np.eye(3), 1.5 * np.eye(3)])                       # stabilising PD-like initial gain
+
+
+@pytest.fixture(scope="module")
+def double_integrators():
+    rng = np.random.default_rng(7)
+    runs = []
+    for s_ in range(6):
+        e = sum_of_sinusoids(0.5, [0.5, 1.3, 2.9, 4.7, 7.1], 3, seed=10 + s_)
+        _, _, d, mu = rollout(lambda t, x, u: A6 @ x + B6 @ u, rng.uniform(-1, 1, 6),
+                              lambda t, x, e=e: -K06 @ x + e(t), 5.0, H)
+        runs.append(OffPolicyDataset.from_trajectory(d, mu, H, W))
+    P = solve_continuous_are(A6, B6, QS * np.eye(6), RS * np.eye(3))
+    K = B6.T @ P / RS
+    return OffPolicyDataset.concatenate(runs), P, K
+
+
+@pytest.mark.parametrize("cdeg, adeg", [((2,), (1,)), ((2, 4), (1, 3))])
+def test_lqr_known_answer_per_axis_bases(double_integrators, cdeg, adeg):
+    """Phase 1.5 bases (D25) on the linearised outer loop with beta = 1000 (unconstrained limit): the critic must
+    equal the Riccati P (block-diagonal by axis) and the actor K / beta; quartic critic and cubic actor weights
+    must vanish because the exact value is quadratic."""
+    data, P, K = double_integrators
+    critic = grouped_basis(6, axis_groups(), cdeg)
+    actors = [grouped_basis(6, [g], adeg) for g in axis_groups()]
+    prob = IRLProblem(critic, actors, BETA, [RS] * 3, QS * np.eye(6))
+    W0 = np.zeros((3, prob.l_a))
+    W0[:, :2] = np.array([[1.0, 1.5]] * 3) / BETA                         # same initial gain as the data
+    res = train(data, prob, W0, tol=1e-5)
+    assert res.converged and res.iterations <= 10
+    assert res.history[-1]["rank"] == prob.n_weights
+    wP = weights_from_quadratic_form(critic, P)
+    assert np.linalg.norm(res.w_c - wP) / np.linalg.norm(wP) < 1e-4
+    K_lin = res.W_a[:, :2] * BETA                                          # coefficients of (e_k, v_k)
+    K_ref = np.array([[K[k, k], K[k, k + 3]] for k in range(3)])
+    np.testing.assert_allclose(K_lin, K_ref, rtol=1e-4)
+    hi_c = critic.total_degrees > 2
+    if hi_c.any():
+        assert np.abs(res.w_c[hi_c]).max() < 1e-4 * np.abs(wP).max()
+        assert np.abs(res.W_a[:, 2:]).max() * BETA < 1e-4 * np.abs(K_ref).max()

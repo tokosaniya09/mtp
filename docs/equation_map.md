@@ -5,7 +5,7 @@ Phase 0.1 deliverable. Source of truth: `papers/base_paper.pdf`. Every equation 
 **[Derived]** = algebra we did ourselves to check or expand a step the paper skips (each one marked so it can be
 re-checked) · **[Ours]** = research contribution (none in this document).
 
-Ambiguities are numbered **A1–A23** (Section 9). A proposed resolution is *not adopted* until the component that
+Ambiguities are numbered **A1–A27** (Section 9). A proposed resolution is *not adopted* until the component that
 needs it is implemented and the decision is logged in `docs/RESEARCH_LOG.md`.
 
 Indices: leader `i`, follower `j`. Case study: leader 1, followers 2 and 3 (pairs 12, 13).
@@ -333,7 +333,7 @@ trajectory at every iteration**. Store $\delta$ and $\mu$ at the sub-step resolu
 | $\mathcal R_j$ | input weight | (3,3) | $8I_3$ |
 
 **Code.** Written once and generic, so the same code serves (27)–(29) and (39)–(42):
-- `rl/basis.py` (built, Phase 1.4a): `PolynomialBasis(dim, degrees)` with `__call__(x)` ((n,)→(l,) or (N,n)→(N,l)), `jacobian(x)`, `labels()`, `count(dim, degrees)`; `weights_from_quadratic_form(basis, P)` for the LQR check. The degree sets are chosen in 1.4b/1.5 ([Eng], A16): the critic should have no constant term (because $V(0)=0$), and the actor an odd/linear part.
+- `rl/basis.py` (built, Phase 1.4a): `PolynomialBasis(dim, degrees)` with `__call__(x)` ((n,)→(l,) or (N,n)→(N,l)), `jacobian(x)`, `labels()`, `count(dim, degrees)`; `weights_from_quadratic_form(basis, P)` for the LQR check. The degree sets are chosen in 1.4b/1.5 ([Eng], A16): the critic should have no constant term (because $V(0)=0$), and the actor an odd/linear part. Phase 1.5 (D25): `MonomialBasis(dim, exponents)` base class, `grouped_basis(dim, groups, degrees)` (monomials within one variable group only), `axis_groups(3)` = [(0,3),(1,4),(2,5)]; `IRLProblem.actor` takes one shared basis or m per-channel bases of equal size, as in (24).
 - `rl/utility.py` (built, Phase 1.4a): `utility_closed_form(mu, bound, r)` (13)/(34), `utility_numeric(...)` (11) for tests, `utility_gradient(mu, bound, r)` ($\partial U/\partial\mu$), `policy_from_xi(xi, bound)` (15)/(25)/(36)/(42), `xi_from_value_gradient(gradV, B, bound, r)` (15)/(18) model-based (tests only), `utility_from_xi(xi, bound, r)` (26), evaluated with the stable form $\ln(1-\tanh^2\xi)=-2\ln\cosh\xi$ (D22).
 - `rl/data.py` (built, Phase 1.4b): `OffPolicyDataset(delta (M,W+1,n), mu (M,W,m), h)` with `from_trajectory(delta, mu, h, W)` and `concatenate`; `rollout(f, x0, behaviour, T, h, observe)` (RK4, ZOH input; plant-agnostic through `observe`); `sum_of_sinusoids(...)` exploration signal (A17). Stores the fine grid (A18).
 - `rl/offpolicy_irl.py` (built, Phase 1.4b): `IRLProblem(critic, actor, bound, r, Q)`; `bellman_rows(data, problem, W_a_n) -> (N_bar, T_bar)` (27)–(28); `solve_weights` (29) by SVD `lstsq`, returning rank, condition number, RMS residual; `train(data, problem, W_a0, tol, max_iter)` (Alg. 3 Steps 2–4, raises if $\bar{\mathcal N}$ is rank-deficient); `critic_value`, `actor_xi`, `policy` (23)–(25). One actor basis shared by all channels (D23). The same functions serve the attitude loop through `(bound, r, Q)`.
@@ -353,6 +353,53 @@ $\dot V^{(n+1)} = \nabla V^{(n+1)T}B\varepsilon_\mu - \delta^TQ\delta - U(\mu^{(
 
 **Code/tests.** The check is post hoc: evaluate (31) along simulated trajectories. Note that $\nabla V^T B$
 requires $m_j$, which is fine for a diagnostic.
+
+### 5.8 Phase 1.5 learning problem for the paper's followers (ideal attitude, D24) — derived 2026-11-12
+
+**Setting.** [Paper] (10)–(13) with Sec. VI values; [Eng] D14 (gravity compensation), D15 (exact $\dot e$),
+D19 (Way 1 features), D24 (ideal attitude: the applied thrust vector $R_jf_{Tj}e_3=\mu_j+m_jge_3$ enters the
+translational part of (1) directly).
+
+| Symbol | Meaning | Shape | Units | Frame |
+|---|---|---|---|---|
+| $e_{ij}=s_{ij}-s^*_{ij}$ | feature error, $s={}^vq_{ij}/x^*$, $s^*=\Delta_{ij}/x^*$ (A10) | (3,) | – | ${}^v\mathcal F_j$ (∥ inertial) |
+| $\hat v_{ij}$ | observer (6) estimate of $v_{ij}=v_i-v_j$ | (3,) | m/s | ${}^v\mathcal F_j$ |
+| $\delta_j=[e_{ij};\hat v_{ij}]$ | learning state | (6,) | mixed | — |
+| $\mu_j$ | learned input = physical $R_jf_{Tj}e_3-m_jge_3$ (D14); $|\mu_{j,k}|<\beta_j=5$ (A2) | (3,) | N | inertial |
+| $x^*$ | desired depth = 4 | scalar | m | — |
+| $m_j$ | 1.3 (j = 2), 2.0 (j = 3) | scalar | kg | — |
+| $\mathcal Q_j=10I_6$, $\mathcal R_j=8I_3$ | cost weights | (6,6), (3,3) | – | — |
+
+**True dynamics of $\delta$ (from (1), (5), (6), D14, leader acceleration $\dot v_i=0$ in Sec. VI).**
+$$\dot e = \frac{\hat v+\tilde v}{x^*},\qquad \dot{\hat v} = \frac{\mu}{m_j} + \underbrace{\bar\zeta - \tilde e/x^* + \kappa\rho}_{\text{observer correction}},\qquad \rho=\tilde v/x^*$$
+This is (10) with $C$ cancelled by D14. The observer error dynamics (7) do not contain $\mu$ (the observer is
+fed the true thrust), so $(\tilde e,\tilde v)$ decay on their own (Phase 1.3: $|\tilde v|<10^{-3}$ after 4.5 s,
+pair 12). Once they have decayed, $\delta$ follows exactly
+$$\dot e = \hat v/x^*,\qquad \dot{\hat v}=\mu/m_j \qquad\text{(three decoupled double integrators).}$$
+
+**Consequence 1: the optimal value separates by axis.** Dynamics, $\mathcal Q$, $\mathcal R$ and $U$ (13) are all
+sums over axes $k=1,2,3$ of terms in $(e_k,\hat v_k,\mu_k)$ only. Hence $V^*(\delta)=\sum_k V^*_1(e_k,\hat v_k)$ with
+the same 2-D function $V^*_1$ for every axis, and $\xi^*_k = \frac{1}{2\beta r m_j}\,\partial V^*_1/\partial\hat v_k$
+depends only on $(e_k,\hat v_k)$. This exact structure is the guide for the basis choice (A16, Step 2).
+
+**Consequence 2: known answer near $\delta=0$.** There $U\approx\mu^T\mathcal R\mu$ and $\tanh\approx$ identity, so
+the learned controller must approach the LQR solution of the double integrator (per axis, $A=[[0,1/x^*],[0,0]]$,
+$B=[0;1/m_j]$, $Q=10I_2$, $R=8$):
+
+| Follower | $P$ (per axis) | $K$ | $\xi\approx K\delta_k/\beta$ coefficients | closed-loop poles |
+|---|---|---|---|---|
+| 2 ($m=1.3$) | [[50.30, 11.63], [11.63, 14.62]] | [1.118, 1.406] | [0.224, 0.281] | −0.26, −0.82 |
+| 3 ($m=2.0$) | [[55.06, 17.89], [17.89, 24.62]] | [1.118, 1.539] | [0.224, 0.308] | −0.29, −0.48 |
+
+**Consequence 3: realisability (for 1.6).** Any $\mu$ with $|\mu_k|<5$ is a valid thrust vector: the physical
+$z$-component $m_jg+\mu_z\ge12.75-5>0$, and the tilt is at most $\arctan(5\sqrt2/7.75)\approx42°$ (j = 2), $\approx27°$ (j = 3).
+
+**Consequence 4: the stated initial conditions barely use the constraint (A27).** Scratch check (2026-11-12;
+LQR-limit tanh policy $\mu=-\beta\tanh(K\delta/\beta)$, real observer (6), exact $\dot e$, RK2, $h=1$ ms):
+$\max|\mu_k| = 0.53$ N (j = 2, $e(0)=[-0.475,-0.425,0]$) and 0.83 N (j = 3, $e(0)=[-0.75,-0.375,0]$), against
+$\beta=5$; $\|e\|<0.05$ after 9.0 s / 11.4 s. Fig. 4 saturates at ±5. So the saturation in Fig. 4 cannot come from
+the stated initial conditions (consistent with A11). Plan: train on a data region that includes large errors,
+validate on (i) the stated initial conditions and (ii) an [Eng] large-error scenario that drives $\mu$ into saturation.
 
 ---
 
@@ -466,7 +513,7 @@ is built; **Note** = no action, but it must be stated in the thesis.
 | ID | Issue | Evidence | Proposed resolution | Status |
 |---|---|---|---|---|
 | A1 | Gravity vs $\beta$: hover needs $\|\mu\|=m_jg$ = 12.75 / 19.6 N > $\beta$=5; with $C=-ge_3$, $\delta=0$ is not an equilibrium inside $\Omega_\mu$ and the infinite-horizon cost diverges | (5), (10), Fig. 4 shows $\mu\to0$ | [Eng] Learn $\mu$ as the gravity-compensated input: applied thrust vector $=\mu+m_jge_3$ (so $C=0$ for learning). Uses $m_j$, which the observer already needs. Bound applies to the deviation. | **Decided (D14)** |
-| A2 | Per-component $\tanh$ gives $\|\mu\|_\infty<\beta$, not $\|\mu\|_2\le\beta$ | (15), (25), Fig. 4 shows components up to ±5 | Implement the formula as printed; report both norms; note in thesis | Proposed |
+| A2 | Per-component $\tanh$ gives $\|\mu\|_\infty<\beta$, not $\|\mu\|_2\le\beta$ | (15), (25), Fig. 4 shows components up to ±5; Fig. 4b inset at t ≈ 0.1 s: one component ≈ +5 and another ≈ +3 at once, so $\|\mu_3\|_2\approx5.8>\beta$ (2026-11-12) | Implement the formula as printed; report both norms; note in thesis | Proposed (evidence: the paper's own bound is per component) |
 | A3 | $r_{j,k_1,k_2}$ undefined in (27)–(29) | — | $r_{j,k_1,k_2}:=[\mathcal R_j]_{k_1k_2}$; diagonal ⇒ explicit form in §5.6, derived from (22); checked against the PDF and by the LQR known-answer test (D23) | Decided |
 | A4 | Observer needs $\dot e$; $\rho=\dot e-\hat v/x^*$, and exact $\dot e$ already gives $v=x^*\dot e$ | (6), §4 derivation | Pluggable source: (a) exact $\dot e$ from simulator (idealised; possibly what the figures used), (b) filtered finite difference of sampled $e$. Reproduce with (a), report (b) as a check | **Decided (D15)** |
 | A5 | Boundary layer ⇒ (9) holds only outside $|\rho_k|<\epsilon$; convergence is to a neighbourhood. $\hat\zeta$ only grows (no leakage). $\tilde\zeta\to0$ is not shown | (6), (9) | Note; test for bounded convergence, not exact | Note |
@@ -480,7 +527,7 @@ is built; **Note** = no action, but it must be stated in the thesis.
 | A13 | Euler convention unstated; $F$ uses $\dot\Theta=\omega$ (small angle) | (1), (33) | Plant integrates $R$ exactly; Euler ZYX for reporting and $\Theta_r$; learner only sees data | Proposed |
 | A14 | Attitude cost $z^T\mathcal Sz$ penalises $\Theta_r,\omega_r$ themselves (not controllable); finite only if references → 0. Fig. 8 plots tracking errors; Fig. 2(c,d) has only ~6 weights, far below a full polynomial in $\mathbb R^{12}$ | (33)–(34), Figs. 2, 8 | Decide when implementing Sec. V: literal $z$ vs tracking-error coordinates $[\Theta-\Theta_r,\omega-\omega_r,\dots]$ | Open |
 | A15 | $\mu\to(f_T,\Theta_r,\omega_r)$ mapping, $\psi_r$, $\omega_r$, $\chi_j$ not given | Sec. V | Standard thrust-vector decomposition; $\psi_r=0$ (Fig. 8: $e_\psi(0)\approx0.174=\psi(0)$); $\omega_r$ from filtered derivative of $\Theta_r$ | Open |
-| A16 | Bases, $l_c$, $l_a$, $\iota_c$, $\iota_a$ not given | Sec. VI ("polynomial combinations") | Start with quadratic critic / linear+cubic actor; match approximate trace counts in Fig. 2 | Open |
+| A16 | Bases, $l_c$, $l_a$, $\iota_c$, $\iota_a$ not given | Sec. VI ("polynomial combinations"); Fig. 2a ≈ 15–25 critic traces with final values ≈ −47…+31 (large negatives, unlike the all-positive per-axis LQR weights 50.3, 23.3, 14.6 for $e^2, 2ev, v^2$); Fig. 2b ≈ 15–20 actor traces within ±1.7 | Start with quadratic critic / linear+cubic actor; weight-by-weight match with Fig. 2 impossible (basis ordering unknown), so compare iteration count and convergence shape. **Outer loop decided (D25):** per-axis critic deg (2,4) in $(e_k,\hat v_k)$, $l_c=24$; actor channel $k$ deg (1,3) in $(e_k,\hat v_k)$, $l_a=6$. Attitude bases still open (Phase 1.6) | Decided (outer loop) |
 | A17 | Behaviour policy, exploration noise, $\mathcal M_j$, data length, initial-weight distribution, admissible initial policy | Alg. 2–4, Sec. VI | Stabilising PD-like policy + sum of sinusoids; $\mathcal M_j\ge2(l_c+3l_a)$; check rank/condition of $\bar{\mathcal N}$. Shown necessary in 1.4b: with on-policy data the actor columns of $\bar{\mathcal N}$ vanish, so exploration must be added to $\mu_j$ | Open (quadrotor values in 1.5) |
 | A18 | Plant integration step and quadrature of $\eta$-integrals unspecified | — | RK4, $h=1$ ms; trapezoid over 50 sub-steps per $\Delta T$; $\int\mu\sigma$ exact for ZOH input (D23) | Decided |
 | A19 | Initial $v_j$, $\omega_j$, $\hat e$, $\hat v$, $\hat\zeta$ not given; frame of $h_i$; leader attitude not modelled | Sec. VI | Zero velocities and rates; $\hat e(0)=e(0)$, $\hat v(0)=0$, $\hat\zeta(0)=0$; kinematic leader with inertial $h_1$ | Proposed |
@@ -491,3 +538,4 @@ is built; **Note** = no action, but it must be stated in the thesis.
 | A24 | Value of $g$ not stated | Sec. VI | $g=9.81$ m/s² | Proposed |
 | A25 | Fig. 5: $\|\tilde e_{12}(0)\|\approx8.8$, $\|\tilde e_{13}(0)\|\approx1.7$, but $\|e_{12}(0)\|\approx0.64$, so the paper's $\hat e(0)$ is unknown | Fig. 5 | Keep A19 ($\hat e(0)=e(0)$); compare behaviour, not $t=0$ values | Open |
 | A26 | Fig. 5 $\|\tilde v_{12}\|$ oscillates; with exact $\dot e$ and true thrust, (7) is linear with real eigenvalues ($-5.02,-1.23$ for pair 12) and sat only adds damping, so (6) alone cannot oscillate | Fig. 5, (7) | Hypothesis: paper fed commanded $\mu$ (attitude lag) or a differentiated/noisy $\dot e$; test in closed loop | Open |
+| A27 | With the stated initial conditions the outer-loop input stays far from the bound: the LQR-limit policy peaks at 0.53 N / 0.83 N vs $\beta=5$, yet Fig. 4 shows saturation at ±5 in the first 0.5 s | Sec. VI, Fig. 4, §5.8 Consequence 4 | Validate on the stated ICs AND on an [Eng] large-error scenario that saturates $\mu$; the data region for learning must cover large errors | Open |
