@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from vsfc.rl.basis import PolynomialBasis, weights_from_quadratic_form
+from vsfc.rl.basis import (MonomialBasis, PolynomialBasis, axis_groups, grouped_basis,
+                           weights_from_quadratic_form)
 
 
 def test_sizes():
@@ -63,3 +64,67 @@ def test_rejects_bad_input():
         PolynomialBasis(3, [2, 2])
     with pytest.raises(ValueError):
         PolynomialBasis(3, [2])(np.zeros(4))
+
+# ---- per-axis (grouped) bases, Phase 1.5 (D25) -----------------------------------------------------------
+
+def test_polynomial_is_monomial_with_same_exponents():
+    b = PolynomialBasis(4, [1, 3])
+    m = MonomialBasis(4, b.exponents)
+    X = np.random.default_rng(3).normal(size=(10, 4))
+    np.testing.assert_array_equal(b(X), m(X))
+    np.testing.assert_array_equal(b.jacobian(X), m.jacobian(X))
+
+
+def test_axis_groups():
+    assert axis_groups() == [(0, 3), (1, 4), (2, 5)]
+
+
+def test_per_axis_critic_and_actor_sizes_and_labels():
+    names = ["e1", "e2", "e3", "v1", "v2", "v3"]
+    critic = grouped_basis(6, axis_groups(), (2, 4))
+    assert critic.size == 3 * (3 + 5) == 24
+    assert critic.labels(names)[:8] == ["e1^2", "e1*v1", "v1^2", "e1^4", "e1^3*v1", "e1^2*v1^2", "e1*v1^3", "v1^4"]
+    assert critic.labels(names)[8] == "e2^2"
+    actors = [grouped_basis(6, [g], (1, 3)) for g in axis_groups()]
+    assert [a.size for a in actors] == [6, 6, 6]
+    assert actors[1].labels(names) == ["e2", "v2", "e2^3", "e2^2*v2", "e2*v2^2", "v2^3"]
+    # no monomial mixes variables of two axes
+    for row in critic.exponents:
+        used = {i % 3 for i in np.nonzero(row)[0]}
+        assert len(used) == 1
+
+
+def test_grouped_basis_values_and_jacobian():
+    b = grouped_basis(6, axis_groups(), (2, 4))
+    x = np.array([0.3, -0.7, 0.2, 1.1, -0.4, 0.9])
+    v = b(x)
+    assert v[0] == pytest.approx(0.3 ** 2) and v[1] == pytest.approx(0.3 * 1.1) and v[7] == pytest.approx(1.1 ** 4)
+    J = b.jacobian(x)
+    eps = 1e-6
+    Jfd = np.stack([(b(x + eps * np.eye(6)[k]) - b(x - eps * np.eye(6)[k])) / (2 * eps) for k in range(6)], axis=-1)
+    np.testing.assert_allclose(J, Jfd, atol=1e-8)
+
+
+def test_grouped_basis_validation():
+    with pytest.raises(ValueError):
+        grouped_basis(6, [(0, 3), (3, 4)], (2,))        # overlapping groups
+    with pytest.raises(ValueError):
+        grouped_basis(6, [(0, 6)], (2,))                # index out of range
+    with pytest.raises(ValueError):
+        grouped_basis(6, axis_groups(), (0, 2))         # constant would repeat per group
+    with pytest.raises(ValueError):
+        MonomialBasis(2, [[1, 0], [1, 0]])              # duplicate rows
+
+
+def test_quadratic_form_weights_for_block_diagonal_P():
+    """Per-axis basis represents x^T P x exactly when P only couples (e_k, v_k); rejects cross-axis P."""
+    b = grouped_basis(6, axis_groups(), (2, 4))
+    P = np.zeros((6, 6))
+    for k in range(3):
+        P[np.ix_([k, k + 3], [k, k + 3])] = [[50.3, 11.6], [11.6, 14.6]]
+    w = weights_from_quadratic_form(b, P)
+    X = np.random.default_rng(4).normal(size=(20, 6))
+    np.testing.assert_allclose(b(X) @ w, np.einsum("ni,ij,nj->n", X, P, X), rtol=1e-12)
+    P[0, 1] = P[1, 0] = 1.0                             # e1-e2 coupling: not representable
+    with pytest.raises(ValueError):
+        weights_from_quadratic_form(b, P)

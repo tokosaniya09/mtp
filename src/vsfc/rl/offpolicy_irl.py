@@ -20,8 +20,10 @@ Same code serves the attitude loop, eqs. (39)-(41) and Alg. 4, through (bound, r
 [Paper] (29): w^(n+1) = (N^T N)^{-1} N^T T, stacked over M windows; w = [w_c; w_a,1; ...; w_a,m].
 [Paper] Alg. 3 Step 4: stop when ||w^(n+1) - w^(n)|| < varrho_3.
 
-[Eng] decisions in this module (logged as D23):
-  - one actor basis sigma_a shared by all m input channels (the paper allows sigma_a,k per k);
+[Eng] decisions in this module (logged as D23, D25):
+  - actor: either one basis shared by all m channels (D23) or one basis sigma_a,k per channel k as in (24)
+    (D25); all channels must have the same size l_a (the paper's l_aj carries no k index), so the actor
+    weights are always an (m, l_a) array;
   - (29) solved with `np.linalg.lstsq` (SVD) instead of forming (N^T N)^{-1}: same minimiser when N has
     full column rank, better conditioned; rank and condition number are recorded every iteration;
   - quadrature (A18): trapezoid on the stored grid for state-only integrands; for eta_w the ZOH input
@@ -36,18 +38,18 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from vsfc.rl.basis import PolynomialBasis
+from vsfc.rl.basis import MonomialBasis
 from vsfc.rl.data import OffPolicyDataset
 from vsfc.rl.utility import log_one_minus_tanh_sq, policy_from_xi
 
 
 @dataclass(frozen=True)
 class IRLProblem:
-    """critic: sigma_c on R^n; actor: sigma_a on R^n (shared by all m channels); bound: beta (or gamma);
-    r: diagonal of R (m,); Q: (n, n) state weight."""
+    """critic: sigma_c on R^n; actor: one basis on R^n shared by all m channels (D23), or a sequence of m bases
+    sigma_a,k (eq. (24), D25) of equal size l_a; bound: beta (or gamma); r: diagonal of R (m,); Q: (n, n)."""
 
-    critic: PolynomialBasis
-    actor: PolynomialBasis
+    critic: MonomialBasis
+    actor: MonomialBasis | tuple
     bound: float
     r: np.ndarray
     Q: np.ndarray
@@ -56,8 +58,18 @@ class IRLProblem:
         object.__setattr__(self, "r", np.asarray(self.r, float).ravel())
         object.__setattr__(self, "Q", np.asarray(self.Q, float))
         n = self.critic.dim
-        if self.actor.dim != n or self.Q.shape != (n, n):
+        if isinstance(self.actor, MonomialBasis):
+            actors = (self.actor,) * self.r.size
+        else:
+            actors = tuple(self.actor)
+            if len(actors) != self.r.size:
+                raise ValueError(f"need one actor basis per input channel: got {len(actors)}, m = {self.r.size}")
+            object.__setattr__(self, "actor", actors)
+        object.__setattr__(self, "actors", actors)
+        if any(a.dim != n for a in actors) or self.Q.shape != (n, n):
             raise ValueError("critic, actor and Q must share the state dimension")
+        if len({a.size for a in actors}) != 1:
+            raise ValueError("all actor bases must have the same size l_a (paper's l_aj)")
         if np.any(self.r <= 0) or self.bound <= 0:
             raise ValueError("r and bound must be positive")
 
@@ -66,13 +78,24 @@ class IRLProblem:
         return self.r.size
 
     @property
+    def l_a(self) -> int:
+        return self.actors[0].size
+
+    @property
     def n_weights(self) -> int:
-        return self.critic.size + self.m * self.actor.size
+        return self.critic.size + self.m * self.l_a
+
+    def actor_features(self, delta: np.ndarray) -> np.ndarray:
+        """sigma_a,k(delta) for every channel: delta (..., n) -> (..., m, l_a)."""
+        if isinstance(self.actor, MonomialBasis):                       # shared: evaluate once
+            s = self.actor(delta)
+            return np.broadcast_to(s[..., None, :], s.shape[:-1] + (self.m, s.shape[-1]))
+        return np.stack([a(delta) for a in self.actors], axis=-2)
 
     def split(self, w: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """w (l_c + m l_a,) -> (w_c (l_c,), W_a (m, l_a))."""
         lc = self.critic.size
-        return w[:lc], w[lc:].reshape(self.m, self.actor.size)
+        return w[:lc], w[lc:].reshape(self.m, self.l_a)
 
     def join(self, w_c: np.ndarray, W_a: np.ndarray) -> np.ndarray:
         return np.concatenate([np.asarray(w_c, float).ravel(), np.asarray(W_a, float).ravel()])
@@ -86,8 +109,8 @@ def critic_value(problem: IRLProblem, w_c: np.ndarray, delta: np.ndarray) -> np.
 
 
 def actor_xi(problem: IRLProblem, W_a: np.ndarray, delta: np.ndarray) -> np.ndarray:
-    """Eq. (24): xi_hat_k = w_a,k^T sigma_a(delta). delta (n,) -> (m,) or (N, n) -> (N, m)."""
-    return problem.actor(delta) @ np.asarray(W_a, float).T
+    """Eq. (24): xi_hat_k = w_a,k^T sigma_a,k(delta). delta (n,) -> (m,) or (N, n) -> (N, m)."""
+    return np.einsum("...kl,kl->...k", problem.actor_features(delta), np.asarray(W_a, float))
 
 
 def policy(problem: IRLProblem, W_a: np.ndarray, delta: np.ndarray) -> np.ndarray:
@@ -106,7 +129,7 @@ def _trapz_windows(y: np.ndarray, h: float) -> np.ndarray:
 class _FixedTerms:
     """Iteration-independent parts of the rows."""
 
-    sig_a: np.ndarray       # (M, W+1, l_a)
+    sig_a: np.ndarray       # (M, W+1, m, l_a)
     eta_v: np.ndarray       # (M, l_c)
     eta_delta: np.ndarray   # (M,)
     eta_w: np.ndarray       # (M, m, l_a)
@@ -116,11 +139,11 @@ def precompute(data: OffPolicyDataset, problem: IRLProblem) -> _FixedTerms:
     d, mu, h = data.delta, data.mu, data.h
     if d.shape[2] != problem.critic.dim or mu.shape[2] != problem.m:
         raise ValueError(f"data dims (n={d.shape[2]}, m={mu.shape[2]}) do not match the problem")
-    sig_a = problem.actor(d)                                                    # (M, W+1, l_a)
+    sig_a = np.ascontiguousarray(problem.actor_features(d))                     # (M, W+1, m, l_a)
     eta_v = problem.critic(d[:, 0]) - problem.critic(d[:, -1])                  # (M, l_c)
     eta_delta = _trapz_windows(np.einsum("mwi,ij,mwj->mw", d, problem.Q, d), h)  # (M,)
-    sig_mid = 0.5 * (sig_a[:, :-1] + sig_a[:, 1:])                              # (M, W, l_a)
-    eta_w = h * np.einsum("mwk,mwl->mkl", mu, sig_mid)                          # (M, m, l_a)
+    sig_mid = 0.5 * (sig_a[:, :-1] + sig_a[:, 1:])                              # (M, W, m, l_a)
+    eta_w = h * np.einsum("mwk,mwkl->mkl", mu, sig_mid)                         # (M, m, l_a)
     return _FixedTerms(sig_a, eta_v, eta_delta, eta_w)
 
 
@@ -138,11 +161,11 @@ def bellman_rows(data: OffPolicyDataset | _FixedTerms, problem: IRLProblem, W_a_
         if h is None:
             raise ValueError("h is required with precomputed terms")
     beta, r = problem.bound, problem.r
-    W_a_n = np.asarray(W_a_n, float).reshape(problem.m, problem.actor.size)
+    W_a_n = np.asarray(W_a_n, float).reshape(problem.m, problem.l_a)
 
-    xi = fixed.sig_a @ W_a_n.T                                                  # (M, W+1, m)
+    xi = np.einsum("mwkl,kl->mwk", fixed.sig_a, W_a_n)                          # (M, W+1, m)
     th = np.tanh(xi)
-    eta_u1 = _trapz_windows(th[..., :, None] * fixed.sig_a[..., None, :], h)    # (M, m, l_a)
+    eta_u1 = _trapz_windows(th[..., None] * fixed.sig_a, h)                     # (M, m, l_a)
     eta_u2 = _trapz_windows(log_one_minus_tanh_sq(xi), h)                       # (M, m)
 
     eta_bar = 2.0 * beta * r[None, :, None] * (fixed.eta_w + beta * eta_u1)      # (M, m, l_a)
@@ -180,7 +203,7 @@ def train(data: OffPolicyDataset, problem: IRLProblem, W_a0: np.ndarray, w_c0: n
     Raises if the stacked matrix is rank-deficient (insufficient excitation, A17).
     """
     fixed = precompute(data, problem)
-    W_a0 = np.asarray(W_a0, float).reshape(problem.m, problem.actor.size)
+    W_a0 = np.asarray(W_a0, float).reshape(problem.m, problem.l_a)
     w_c0 = np.zeros(problem.critic.size) if w_c0 is None else np.asarray(w_c0, float)
     w = problem.join(w_c0, W_a0)
     history = []
