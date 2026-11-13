@@ -435,6 +435,59 @@ policy (42), and the residual $o_j^{(n)}$ (unnumbered; its first $\tanh$ has a t
 **Tests.** Same structure as Sec. 5. Additionally, holding a constant $\Theta_r$ drives the attitude error to zero
 on plant (1) with $|u_k|<\gamma$.
 
+### 6.1 Phase 1.6 learning problem in D29 coordinates — derived 2026-11-13
+
+**Setting.** [Paper] (33)–(42) with Sec. VI values; [Eng] D29 (error coordinates), D30 (reference from
+`thrust_mapping.py`), A13 (plant integrates $R$ exactly; $\Theta$ ZYX).
+
+| Symbol | Meaning | Shape | Units | Frame |
+|---|---|---|---|---|
+| $e_\Theta=\mathrm{wrap}(\Theta-\Theta_r)$ | attitude tracking error (Fig. 8) | (3,) | rad | Euler (ZYX) |
+| $e_\omega=\omega-\omega_r$ | rate tracking error | (3,) | rad/s | body |
+| $z=[e_\Theta;e_\omega;\Theta_r;\omega_r]$ | learning state (D29) | (12,) | mixed | — |
+| $u=f_\tau$ | torque, $\|u_k\|<\gamma=1$ | (3,) | N·m | body |
+| $J=\mathrm{diag}(0.0082,0.0080,0.0145)$ | inertia, **same for both followers** | (3,3) | kg·m² | body |
+| $\mathcal S=10I_{12}$, $\mathcal D=8I_3$ | cost weights | (12,12), (3,3) | — | — |
+
+**True dynamics of the error (from (1), A13, D30).**
+$$\dot e_\Theta = W(\Theta)\omega - W(\Theta_r)\omega_r,\qquad
+\dot e_\omega = J^{-1}u \;\underbrace{-\,J^{-1}(\omega\times J\omega) - \dot\omega_r}_{d(t)}.$$
+With the paper's small-angle model ($W=I$ in (33)) the first equation is $\dot e_\Theta=e_\omega$. The
+term $d$ does not contain $u$. Its size in the case study is small: $\|J\omega\times\omega\|\sim J\|\omega\|^2\approx10^{-3}$ N·m for
+$\|\omega\|\approx0.3$ rad/s (Step 1 test signal), against $\gamma=1$. The reference block
+$(\Theta_r,\omega_r)$ evolves as the outer loop dictates (the numerical $\chi_j$, D30) and is **not** influenced by $u$
+($G$ has zeros there).
+
+**Consequence 1: the reference block of the cost does not change the policy.** $z^T\mathcal Sz=10(\|e_\Theta\|^2+\|e_\omega\|^2)
++10(\|\Theta_r\|^2+\|\omega_r\|^2)$. The second part does not depend on $u$ and adds a policy-independent term to
+$\mathcal V$, whose gradient along $G$ (the $e_\omega$ rows) is zero. So (36) is unchanged if that part is left out of the learning.
+
+**Consequence 2: neglecting $d$ and $W\neq I$, the problem separates by axis** into three double integrators
+$\dot e_{\Theta k}=e_{\omega k}$, $\dot e_{\omega k}=u_k/J_k$ with cost $10(e_{\Theta k}^2+e_{\omega k}^2)+U_k(u_k)$. Then
+$\mathcal V^*=\sum_k\mathcal V^*_k(e_{\Theta k},e_{\omega k})$ and $\varsigma^*_k$ depends only on $(e_{\Theta k},e_{\omega k})$. This is the same
+structure as §5.8, and it is the guide for the basis choice (A16, attitude).
+
+**Consequence 3: known answer near $z=0$** (per axis, $A=[[0,1],[0,0]]$, $B=[0;1/J_k]$, $Q=10I_2$, $R=8$; $\varsigma\approx K x/\gamma$):
+
+| Axis | $J_k$ | $K$ | $P_{11}$, $2P_{12}$, $P_{22}$ | closed-loop poles |
+|---|---|---|---|---|
+| roll | 0.0082 | [1.1180, 1.1262] | 10.073, 0.147, 0.0739 | −1.00, −136.3 |
+| pitch | 0.0080 | [1.1180, 1.1260] | 10.071, 0.143, 0.0721 | −1.00, −139.8 |
+| yaw | 0.0145 | [1.1180, 1.1324] | 10.129, 0.259, 0.1314 | −1.00, −77.1 |
+
+The dominant pole is −1 rad/s on every axis (time constant 1 s), so $e_\psi$ goes from 0.174 rad to 0.024 rad in 2 s.
+That is consistent with Fig. 8. $\|K x\|<1$ unless $|e_\Theta|$ or $|e_\omega|\gtrsim0.9$, so saturation happens only in brief transients (Fig. 4c,d).
+
+**Consequence 4: Fig. 2(c,d) size.** About 6–7 critic traces (final ≈ 0.17, 0.03, ≈0 ×3–4, −1.65) and about 6–7 actor traces, all
+positive (final ≈ 2.28, 1.35 ×2, 1.1, 0.75, 0.48 ×2), settled after about 4 iterations. A full polynomial in $\mathbb R^{12}$ would have
+78 quadratic terms alone. The figure therefore suggests per-axis bases in $(e_{\Theta k},e_{\omega k})$: a linear actor gives exactly 6
+actor weights. Individual values cannot be matched (basis ordering and scaling unknown). The critic's −1.65 is not a
+diagonal quadratic term of a positive-definite $\mathcal V$, so their critic basis is not simply ours (A16).
+
+**Consequence 5: time-scale separation is weak (A29).** The inner loop's dominant pole (−1) is only about 1.2–4× faster than
+the outer loop's (−0.26, −0.82 for j = 2; −0.29, −0.48 for j = 3, §5.8). The attitude lag may visibly change Fig. 4a,b
+and the observer behaviour (A26) once the loops are cascaded.
+
 ---
 
 ## 7. Cascade and case study — Sec. VI → `src/vsfc/controllers/thrust_mapping.py`, `src/vsfc/sim/`, `config/paper_case_study.yaml`
@@ -550,3 +603,4 @@ is built; **Note** = no action, but it must be stated in the thesis.
 | A26 | Fig. 5 $\|\tilde v_{12}\|$ oscillates; with exact $\dot e$ and true thrust, (7) is linear with real eigenvalues ($-5.02,-1.23$ for pair 12) and sat only adds damping, so (6) alone cannot oscillate | Fig. 5, (7) | Hypothesis: paper fed commanded $\mu$ (attitude lag) or a differentiated/noisy $\dot e$; test in closed loop | Open |
 | A27 | With the stated initial conditions the outer-loop input stays far from the bound: the LQR-limit policy peaks at 0.53 N / 0.83 N vs $\beta=5$, yet Fig. 4 shows saturation at ±5 in the first 0.5 s | Sec. VI, Fig. 4, §5.8 Consequence 4 | Validate on the stated ICs AND on an [Eng] large-error scenario that saturates $\mu$; the data region for learning must cover large errors | Explained: ±5 needs $|e|\gtrsim12$ = Fig. 7's plotted $e_z(0)$ (A11); validated on stated, large-error, near-saturation cases (Phase 1.5) |
 | A28 | Sec. VI: NN weights "randomly initialized"; Alg. 1 Step 1 needs an admissible $\mu^{(0)}$ | Phase 1.5: random $N(0,0.1^2)$ actor starts converge per axis to the non-stabilising Riccati solutions (E8) | Random starts drawn from admissible policies (positive per-axis linear gains, cubic 0) (D28) | Decided |
+| A29 | Inner/outer time-scale separation is weak: with $\mathcal S=10I$, $\mathcal D=8I$ the attitude loop's dominant pole is −1 rad/s, against −0.26…−0.82 for the outer loop (§5.8, §6.1) | Sec. VI weights; Fig. 8 | Expect attitude lag to change Fig. 4a,b and possibly to explain A26 (Fig. 5 oscillation). Measure in the cascade (Phase 1.6 Step 6); no change to paper weights | Open |
