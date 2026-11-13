@@ -1,4 +1,4 @@
-                                                                                                                                                                                                                                                                                                                                                              # Research Log — Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control
+# Research Log — Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control
 
 Last updated: 2026-11-13
 
@@ -238,7 +238,11 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
             Round trip f_T R(Theta_r) e3 = F to 1e-12; max tilt arcsin(beta/(m g)) = 23.1° / 14.8° (E11); omega_r vs an
             independent R^T R_dot truth: 0.07 % (raw difference), 2.8 % (tau = 0.02 s lag) of max |omega_r| = 0.29 rad/s.
             Config: `engineering.ref_rate_tau = 0.02`.
-      - [ ] Step 2: attitude learning problem in D29 coordinates (derivation in equation map §6) + attitude bases (A16).
+      - [ ] Step 2: attitude learning problem in D29 coordinates. Derivation done 2026-11-13 (equation map §6.1): reference
+            block of S does not change the policy; neglecting the small d(t) the problem separates per axis into double
+            integrators; LQR known answer K ≈ [1.118, 1.13] per axis, dominant pole −1 (consistent with Fig. 8); Fig. 2c,d show
+            only ~6–7 weights each. New open question A29 (weak inner/outer time-scale separation). Basis choice (A16)
+            awaiting user decision.
       - [ ] Step 3: attitude data (reference signals + behaviour torque, A17 analogue). Then Alg. 4 data/training like 1.5, cascade with the 1.5 outer loop, repeat Fig. 4 with attitude lag
       (A26 hypothesis), Figs. 2c,d, 4c,d, 8.
 - [ ] Phase 1.7 — Full closed loop (observer + outer + inner), baseline [16] with input clipping, Figs. 2–10.
