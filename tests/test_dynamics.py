@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from vsfc.dynamics import (E3, QuadrotorParams, euler_rate_matrix, euler_to_rotation, normalize_state,
+from vsfc.dynamics import (E3, QuadrotorParams, euler_rate_matrix, euler_rate_matrix_inv, euler_to_rotation,
+                           normalize_state,
                            pack_state, quadrotor_derivatives, rotation_to_euler, skew, unpack_state)
 from vsfc.sim.integrators import integrate
 
@@ -50,6 +51,13 @@ def test_euler_rate_matrix_matches_finite_difference():
     R_plus = R @ (np.eye(3) + skew(w) * dt + 0.5 * (skew(w) @ skew(w)) * dt**2)
     fd = (rotation_to_euler(R_plus) - th) / dt
     np.testing.assert_allclose(euler_rate_matrix(th) @ w, fd, atol=1e-5)
+
+
+def test_euler_rate_matrix_inverse_closed_form():
+    rng = np.random.default_rng(2)
+    for _ in range(100):
+        th = rng.uniform([-np.pi, -1.4, -np.pi], [np.pi, 1.4, np.pi])
+        np.testing.assert_allclose(euler_rate_matrix_inv(th) @ euler_rate_matrix(th), np.eye(3), atol=1e-12)
 
 
 # ---------- eq. (1) right-hand side ----------

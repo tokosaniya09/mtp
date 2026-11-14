@@ -64,6 +64,17 @@ def euler_rate_matrix(theta: np.ndarray) -> np.ndarray:
                      [0.0, sf / ct, cf / ct]])
 
 
+def euler_rate_matrix_inv(theta: np.ndarray) -> np.ndarray:
+    """W(Theta)^-1, so omega = W^-1 Theta_dot (ZYX): [[1, 0, -s_th], [0, c_ph, s_ph c_th], [0, -s_ph, c_ph c_th]].
+
+    Closed form (no linear solve); used at every step of the attitude simulation."""
+    phi, th = float(theta[0]), float(theta[1])
+    cf, sf, ct, st = np.cos(phi), np.sin(phi), np.cos(th), np.sin(th)
+    return np.array([[1.0, 0.0, -st],
+                     [0.0, cf, sf * ct],
+                     [0.0, -sf, cf * ct]])
+
+
 def project_to_so3(R: np.ndarray) -> np.ndarray:
     """Nearest rotation matrix (Frobenius norm) via SVD, with det = +1."""
     U, _, Vt = np.linalg.svd(R)

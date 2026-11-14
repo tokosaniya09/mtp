@@ -146,6 +146,74 @@ def _outer_learning(d: dict) -> OuterLearningConfig:
 
 
 @dataclass(frozen=True)
+class InnerDataConfig:
+    """[Eng, D32] data collection for Alg. 4, attitude loop. See `sim/inner_loop.collect_attitude_dataset`."""
+
+    n_runs: int
+    run_length: float              # s
+    k_theta: float                 # behaviour PD gain on e_Theta_k, N m/rad
+    k_omega: float                 # behaviour PD gain on e_omega_k, N m s/rad
+    explore_freqs: np.ndarray      # (Q,) rad/s
+    explore_amplitude: np.ndarray  # (Q, 3) N m
+    e_theta0_max: np.ndarray       # (3,) rad, e_Theta(0) ~ U(-max, max)
+    e_omega0_max: np.ndarray       # (3,) rad/s
+    ref_freqs: np.ndarray          # (P,) rad/s
+    ref_amplitude: np.ndarray      # (P, 3) rad; yaw column 0 (D30)
+    seed: int
+
+
+@dataclass(frozen=True)
+class InnerLearningConfig:
+    """[Eng, D31, D32] Alg. 4 settings for the attitude loop: main basis B and check basis A (degrees per axis)."""
+
+    critic_degrees: tuple
+    actor_degrees: tuple
+    check_critic_degrees: tuple
+    check_actor_degrees: tuple
+    max_iter: int
+    init_seeds: tuple
+    init_gain_range: tuple         # (2,) positive; per-axis k_theta, k_omega of random admissible initial actors
+    data: InnerDataConfig
+
+
+def _degrees(values) -> tuple:
+    return tuple(int(x) for x in values)
+
+
+def _table(values, rows: int, name: str) -> np.ndarray:
+    arr = np.asarray(values, float)
+    if arr.shape != (rows, 3):
+        raise ValueError(f"{name}: expected ({rows}, 3), got {arr.shape}")
+    return arr
+
+
+def _inner_data(d: dict) -> InnerDataConfig:
+    freqs, rfreqs = np.asarray(d["explore_freqs"], float), np.asarray(d["ref_freqs"], float)
+    ref_amp = _table(d["ref_amplitude"], rfreqs.size, "ref_amplitude")
+    if np.any(ref_amp[:, 2] != 0.0):
+        raise ValueError("ref_amplitude: yaw column must be 0 (psi_r = 0, D30)")
+    data = InnerDataConfig(
+        n_runs=int(d["n_runs"]), run_length=_positive(d["run_length"], "run_length"),
+        k_theta=_positive(d["k_theta"], "k_theta"), k_omega=_positive(d["k_omega"], "k_omega"),
+        explore_freqs=freqs, explore_amplitude=_table(d["explore_amplitude"], freqs.size, "explore_amplitude"),
+        e_theta0_max=_vec(d["e_theta0_max"], 3, "e_theta0_max"), e_omega0_max=_vec(d["e_omega0_max"], 3, "e_omega0_max"),
+        ref_freqs=rfreqs, ref_amplitude=ref_amp, seed=int(d["seed"]))
+    if data.n_runs < 1:
+        raise ValueError("n_runs must be >= 1")
+    return data
+
+
+def _inner_learning(d: dict) -> InnerLearningConfig:
+    return InnerLearningConfig(
+        critic_degrees=_degrees(d["critic_degrees"]), actor_degrees=_degrees(d["actor_degrees"]),
+        check_critic_degrees=_degrees(d["check_critic_degrees"]),
+        check_actor_degrees=_degrees(d["check_actor_degrees"]), max_iter=int(d["max_iter"]),
+        init_seeds=_degrees(d["init_seeds"]),
+        init_gain_range=tuple(_positive(x, "init_gain_range") for x in d["init_gain_range"]),
+        data=_inner_data(d["data"]))
+
+
+@dataclass(frozen=True)
 class CaseStudy:
     g: float
     leader: LeaderConfig
@@ -161,6 +229,7 @@ class CaseStudy:
     sphere_radius: float
     observer_init: dict
     learning_outer: OuterLearningConfig
+    learning_inner: InnerLearningConfig
 
 
 def _follower(d: dict) -> FollowerConfig:
@@ -231,4 +300,5 @@ def load_case_study(path: str | Path = DEFAULT_CONFIG) -> CaseStudy:
         sphere_radius=_positive(eng["sphere_radius"], "sphere_radius"),
         observer_init=dict(eng["observer_init"]),
         learning_outer=_outer_learning(raw["learning_outer"]),
+        learning_inner=_inner_learning(raw["learning_inner"]),
     )
