@@ -106,3 +106,31 @@ learning_outer:                # [Eng] Phase 1.5, Alg. 3 for the visual-servoing
     seed: 1
   large_error_e0: [3.2, -1.45, 0.0]   # [Eng] A27 validation case: x/y of Fig. 7 at t = 0 (pair 12); z = 0 (A11)
   near_saturation_v0: [2.0, -2.0, 2.0] # [Eng] A27: large_error_e0 plus this v_ij(0) (m/s) drives |mu_k| to ~4.6 N
+learning_inner:                # [Eng] Phase 1.6, Alg. 4 for the attitude loop (paper gives none of these)
+  critic_degrees: [2, 4]       # [Eng] D31/D33 (A16) main basis A (same as D25), per axis in (e_Theta_k, e_omega_k); l_c = 24
+  actor_degrees: [1, 3]        # [Eng] D31/D33 main basis A: channel k uses (e_Theta_k, e_omega_k); l_a = 6
+  check_critic_degrees: [2]    # [Eng] D31/D33 check basis B: e_T^2, e_T*e_w, e_w^2 per axis; l_c = 9
+  check_actor_degrees: [1]     # [Eng] D31/D33 check basis B: l_a = 2 (6 actor weights, as Fig. 2d)
+  max_iter: 50                 # [Eng] safety cap; stopping test uses tol_att (Sec. VI)
+  init_seeds: [1, 2, 3, 4, 5]  # [Eng] D28 analogue: random ADMISSIBLE initial actors ("randomly initialized", Sec. VI)
+  init_gain_range: [0.1, 1.0]  # [Eng] per-axis linear gains k_theta, k_omega ~ U(range) > 0; cubic part 0
+  data:                        # [Eng] D32 (A17 analogue): rotational eq. (1) + sinusoidal reference + saturated PD
+    n_runs: 20
+    run_length: 10.0           # s; no burn-in (no observer); slow closed-loop pole -1 rad/s
+    k_theta: 0.5               # behaviour PD gain on e_Theta_k, N m/rad  (u = gamma tanh((-K0 x_e + b)/gamma))
+    k_omega: 0.1               # behaviour PD gain on e_omega_k, N m s/rad
+    explore_freqs: [0.3, 0.7, 1.7, 9.0, 17.0, 29.0]   # rad/s; first 3 move the error, last 3 excite e_omega
+    explore_amplitude:         # N m per sinusoid, rows = freqs, cols = (roll, pitch, yaw). 1/J ~ 122: 0.6 N m dither
+      - [0.05, 0.10, 0.05]     #   wrapped the angles (E12), so the dither is small; the region (not u) reaches
+      - [0.05, 0.10, 0.05]     #   the policy's saturation (|e_omega| > ~1)
+      - [0.05, 0.10, 0.05]
+      - [0.08, 0.08, 0.08]
+      - [0.08, 0.08, 0.08]
+      - [0.08, 0.08, 0.08]
+    e_theta0_max: [0.25, 0.6, 0.25] # rad, e_Theta(0) ~ U(-max, max); shaped like Fig. 8 (pitch to ~0.8, roll/yaw small)
+    e_omega0_max: [0.6, 1.5, 0.6]   # rad/s, e_omega = Euler-rate error (D33)
+    ref_freqs: [0.4, 0.9]           # rad/s, smooth reference (chi_j "unknown smooth function", Sec. V)
+    ref_amplitude:                  # rad, rows = ref_freqs; |phi_r| <= 0.1, |theta_r| <= 0.3 < 0.40 (tilt bound, E11); psi_r = 0
+      - [0.05, 0.15, 0.0]
+      - [0.05, 0.15, 0.0]
+    seed: 1

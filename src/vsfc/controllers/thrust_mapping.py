@@ -68,6 +68,17 @@ def tracking_error(theta: np.ndarray, omega: np.ndarray, theta_r: np.ndarray,
     return e_theta, np.asarray(omega, float) - np.asarray(omega_r, float)
 
 
+def tracking_error_euler_rate(theta: np.ndarray, omega: np.ndarray, theta_r: np.ndarray,
+                              theta_r_dot: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """[Eng] D33 (revises D29's rate error): e_Theta = wrap(Theta - Theta_r) (rad) and the EULER-RATE error
+    e_omega = W(Theta) omega - Theta_r_dot = Theta_dot - Theta_r_dot (rad/s), so e_Theta_dot = e_omega exactly.
+
+    Under the paper's model (33), Theta_dot = omega, this equals omega - omega_r. On the exact plant (1) the body-rate
+    error couples the axes through W(Theta) and breaks the per-axis learning problem (E13)."""
+    e_theta = wrap_angle(np.asarray(theta, float) - np.asarray(theta_r, float))
+    return e_theta, euler_rate_matrix(theta) @ np.asarray(omega, float) - np.asarray(theta_r_dot, float)
+
+
 @dataclass(frozen=True)
 class AttitudeReference:
     """Output of the reference generator at one sample."""
