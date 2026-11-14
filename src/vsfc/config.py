@@ -116,6 +116,7 @@ class OuterLearningConfig:
     data: OuterDataConfig
     large_error_e0: np.ndarray  # (3,)
     near_saturation_v0: np.ndarray  # (3,) m/s
+    fig7_plotted_e0: np.ndarray  # (3,), exploratory (A11)
 
 
 def _outer_learning(d: dict) -> OuterLearningConfig:
@@ -142,7 +143,8 @@ def _outer_learning(d: dict) -> OuterLearningConfig:
         init_gain_range=tuple(_positive(x, "init_gain_range") for x in d["init_gain_range"]),
         init_cubic_std=float(d["init_cubic_std"]), data=data,
         large_error_e0=_vec(d["large_error_e0"], 3, "large_error_e0"),
-        near_saturation_v0=_vec(d["near_saturation_v0"], 3, "near_saturation_v0"))
+        near_saturation_v0=_vec(d["near_saturation_v0"], 3, "near_saturation_v0"),
+        fig7_plotted_e0=_vec(d["fig7_plotted_e0"], 3, "fig7_plotted_e0"))
 
 
 @dataclass(frozen=True)

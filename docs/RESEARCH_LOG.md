@@ -11,7 +11,7 @@ Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision ·
 - **Thesis title:** "Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control"
 - **Core question:** how does a follower quadrotor keep a reliable estimate of its leader's state, and hold
   formation, when its visual measurement of the leader is intermittent?
-- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 done (outer loop, ideal attitude), Phase 1.6 (attitude loop) in progress (D29, D30).
+- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 done (outer loop), Phase 1.6 done (attitude loop + cascade, D29–D34); next Phase 1.7 (baseline [16], Fig. 10).
 
 ## Base paper
 
@@ -79,6 +79,7 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D34 | 2026-11-14 | [Eng] Cascade (Phase 1.6 Step 6): plant = full eq. (1); controller (outer policy → D14/D30 mapping → attitude policy A) evaluated every 1 ms step and held (ZOH); Theta_r_dot by the D20 filter (tau = 0.02 s); observer fed the ACTUAL thrust f_T R e3 by default, COMMANDED mu + m g e3 as the A26 variant; outer weights from Phase 1.5, attitude weights from Phase 1.6 (basis A) | Attitude poles near −140 rad/s cannot be held over dT = 0.05 s; 1 ms matches Phase 1.5. Paper gives no control rate and no link between the loops beyond "dual-loop" (Sec. V) | `controllers/cascade.py` (plant-agnostic), `sim/cascade.py`, `scripts/run_cascade.py`; 6 new tests | Decided |
 | D33 | 2026-11-13 | [Eng] Revises D29 and D31. (1) Rate error = Euler-rate error e_omega = Theta_dot − Theta_r_dot = W(Theta) omega − Theta_r_dot (angle error unchanged), so e_Theta_dot = e_omega exactly. (2) Basis roles swapped: A (degrees 2,4 / 1,3; 24/18 weights) is main, B (2 / 1; 9/6) is the check | Fig. 8 needs data up to ~0.8 rad pitch. With body-rate error the Euler kinematics couple the axes and the yaw gain collapses (E13). Under the paper's own model (33) (Theta_dot = omega) both errors coincide, so D33 is the reading consistent with (33) on the exact plant. B is 25–150 % off LQR and destabilising wherever the policy saturates; A is 0.57 % (mid region) / 3.7 % (Fig. 8 size) off on model (33) | `controllers/thrust_mapping.tracking_error_euler_rate`, `sim/inner_loop.py`, config `learning_inner` | Decided (user chose both 2026-11-13) |
 | D32 | 2026-11-13 | [Eng] A17 for the attitude loop (Alg. 4 Step 1): rotational part of eq. (1); smooth sinusoidal reference Theta_r (roll ≤ 0.1, pitch ≤ 0.3 rad, psi_r = 0) with exact Theta_r_dot; behaviour u = gamma tanh((−K0 x_e + b(t))/gamma), K0 = (0.5, 0.1) per axis; b = slow sines (0.05/0.1/0.05 N m) + small dither (0.08 N m at 9–29 rad/s); e(0) up to (0.25, 0.6, 0.25) rad, (0.6, 1.5, 0.6) rad/s; 20 runs × 10 s, no burn-in. One dataset for both followers | Paper: "admissible control u_j into (37)", chi_j "unknown smooth function". Region shaped like Fig. 8 (pitch to ~0.8 rad, roll/yaw small); large dither wrapped the angles (E12); the region, not u, reaches the policy's saturation. Keeps Alg. 4 isolated from the outer loop, like D24 | `sim/inner_loop.py`, `scripts/collect_inner_data.py` | Decided ([Eng], user may revise) |
 | D31 | 2026-11-13 | [Eng] A16 for the attitude loop: learner state x = [e_Theta; e_omega] (6), Q = error block of S (10 I_6), r = 8, bound gamma = 1. Main basis B: per-axis critic degree 2 in (e_Theta_k, e_omega_k) (9 weights), actor channel k degree 1 (6 weights). Check basis A: degrees (2, 4)/(1, 3) as D25 (24/18 weights), run alongside B | Problem separates per axis (§6.1); reference block of S cannot change u (Consequence 1) and is exogenous; Fig. 2c,d show ~6–7 weights each (B gives 9/6, A 24/18); saturation only for errors ≳ 0.9, so A's extra terms should matter little; A shows whether they do | `sim/inner_loop.py`, config `learning_inner`; 9 new tests | Decided (user chose "B + A as a check" 2026-11-13); roles swapped by D33 |
@@ -235,7 +236,7 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
           (tanh ≥ 0.99) only for |e| ≳ 12; Fig. 7 shows e_z(0) ≈ 12 for pair 12, so Fig. 4's saturation matches the
           PLOTTED initial errors, not the stated positions (A27 explained via A11). Errors converge in ~9–11 s from the
           stated ICs vs "5–10 s" in the paper: consistent.
-- [ ] Phase 1.6 — Inner (attitude) loop, current. A14 → D29 (error coordinates), A15 → D30 (thrust-vector
+- [x] Phase 1.6 — Inner (attitude) loop and cascade, done 2026-11-14. A14 → D29 (error coordinates), A15 → D30 (thrust-vector
       decomposition) decided 2026-11-13.
       - [x] Step 1 (2026-11-13): `controllers/thrust_mapping.py` (D30) + `tests/test_thrust_mapping.py` (20 tests pass).
             Round trip f_T R(Theta_r) e3 = F to 1e-12; max tilt arcsin(beta/(m g)) = 23.1° / 14.8° (E11); omega_r vs an
@@ -262,10 +263,27 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
             (A16). Stand-alone e_psi: 0.174 → 0.03 rad at 2 s (Fig. 8: ~0.02), consistent. Fig. 8's pitch oscillation and
             Fig. 4c,d torque spikes need the cascade (Step 6).
             Figures (plain diagnostics, git-ignored): `results/phase1_6/fig2cd_weights_att.png`, `fig8_attitude_standalone.png`.
-      - [ ] Step 6 (next): cascade = observer (6) + learned outer loop (1.5) + thrust mapping (D30) + learned attitude
-            loop (A) on the full plant (1); control applied every 1 ms step (as Phase 1.5); repeat Fig. 4a,b with attitude lag
-            (A26, A29 hypotheses); Figs. 4c,d, 8.
-- [ ] Phase 1.7 — Full closed loop (observer + outer + inner), baseline [16] with input clipping, Figs. 2–10.
+      - [x] Step 6 (2026-11-14): cascade (D34). `controllers/cascade.py`, `sim/cascade.py`, `scripts/run_cascade.py`,
+            `tests/test_cascade.py` (6 new, 142 total, all pass). Outputs `results/phase1_6/cascade_f{2,3}.txt` and
+            fig4_inputs, fig5_observer, fig7_e_cascade, fig8_attitude_cascade, fig9_relpos_cascade (plain diagnostics).
+            Both followers, 50 s, all cases converge (||e(50)|| ≤ 4e-5); |mu_k| ≤ 5, |u_k| ≤ 0.46 < gamma; depth margin
+            e_x ≥ 0 in the large cases; attitude errors < 0.01 rad after 3.3–3.7 s; e_psi 0.174 → ~0.03 at 2 s (Fig. 8).
+            Attitude lag vs ideal attitude (A29): stated ICs ||e|| < 0.01 after 16.5 / 18.3 s (ideal 15.0 / 17.0 s);
+            large error 24.9 / 24.3 s (ideal 23.9 / 23.3 s); outer cost +26 % (large error, j = 2), +3.5 % (stated ICs,
+            j = 3), −5 % (stated ICs, j = 2). So the lag slows convergence by ~1–1.5 s; weak separation does not destabilise.
+            Fig. 7 plotted e(0) = [3.2, −1.45, 12] (A11, outside the outer training region): mu_z saturates at −5 for
+            0.71 s (j = 2) / 1.03 s (j = 3), then mu → 0 (Fig. 4a,b: ±5 for < 0.5 s): consistent with A27.
+            A26: with the ACTUAL thrust ||v~|| is monotone in every case. With the COMMANDED thrust and the Fig. 7 e(0),
+            ||v~|| rises to a single peak 0.95 at 0.59 s (j = 2) before decaying (Fig. 5: peaks ≈ 1.2 at ~0.3 s and
+            ≈ 0.8 at ~1 s). Partial support for A26: a hump appears only with commanded thrust during attitude lag; the
+            two-peak oscillation is not reproduced.
+            Not reproduced (A32): Fig. 4c,d torque spikes to ±1 and Fig. 8's oscillating pitch error up to ~0.5–0.8 rad;
+            ours: max |u_k| 0.43 N m, pitch error ≤ 0.39 rad, monotone.
+- [ ] Phase 1.7 — Baseline: optimal controller of ref. [16] (M. Cheng, H. Liu, Q. Gao, J. Lu, X. Xia, "Optimal
+      containment control of a quadrotor team with active leaders via reinforcement learning," IEEE Trans. Cybern.,
+      54(8):4502–4512, Aug. 2024, as cited in the base paper) with direct input saturation; Fig. 10 vs Fig. 9; then the
+      Phase 1 summary (Figs. 2–10). Needs the [16] PDF (not in the repo) to implement its controller faithfully.
+      Also open: A6 (kappa_13 = 55 vs 5) and the finite-difference e_dot re-run (D15) in the cascade.
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
       vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
 
@@ -285,9 +303,12 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
       outer loop's learned policy cost less). Likely cause: cross-axis coupling (W J^-1, gyroscopic) that a per-axis
       basis cannot represent; residual 1.4e-2 vs 7.7e-4 for the outer loop. Small; re-check in the cascade. A coupled
       basis would be an [Eng] change to D31 (not planned).
-- [ ] Phase 1.6 Step 3: the learned attitude policy has a fast pole near −136 rad/s (§6.1). If the controller is
-      evaluated only every dT = 0.05 s (zero-order hold) the sampled loop is unstable; the paper does not give the
-      control update rate. Decide the update rate when building the cascade (1 ms grid, like Phase 1.5, unless stated).
+- [x] Control update rate for the attitude loop: 1 ms (D34).
+- [ ] A32: Fig. 4c,d (torque reaching ±1 briefly) and Fig. 8 (pitch error swinging to ~0.5–0.8 rad with oscillation)
+      are not reproduced: our cascade gives max |u_k| 0.43 N m and a monotone pitch error ≤ 0.39 rad, even from Fig. 7's
+      plotted e(0). Possible causes: the paper's attitude reference is generated differently (chi_j "unknown", D30 is
+      ours), a different/unfiltered reference rate, or a slower control update. Not resolvable from the paper.
+- [ ] A26 (update): commanded-thrust observer input produces one hump in ||v~|| during attitude lag, not two peaks.
 - [ ] A11: Figs. 7/9 initial values inconsistent with stated initial conditions; validation will compare behaviour, not t=0 values.
 - [ ] Remaining A-items (A2, A3, A6, A8–A10, A12, A13, A16–A20) have proposed resolutions in `docs/equation_map.md` §9.
 - [ ] A25: Fig. 5 starts at ||e~_12(0)|| ≈ 8.8 and ||e~_13(0)|| ≈ 1.7, while ||e_12(0)|| ≈ 0.64; the paper's e_hat(0) is unknown
@@ -311,6 +332,8 @@ Newest first. Status: Fixed / Open / Workaround.
 
 | # | Date | Where | Symptom | Cause | Fix | Status |
 |---|---|---|---|---|---|---|
+| E17 | 2026-11-14 | Phase 1.6 Step 6, `run_cascade.py` (both followers in parallel) | Run took >10 min and hit the 600 s tool timeout; output files empty meanwhile | Six 50 s cascade runs + ideal-attitude runs per follower at 1 ms (~2 ms per step in Python), two processes in parallel; output buffered until exit | Waited for completion (exit 0); not a hang. Future: run per follower in the background | Fixed |
+| E16 | 2026-11-14 | Phase 1.6 Step 6, scripted edit of `run_cascade.py` | Python heredoc edit aborted: `AssertionError` (pattern not found), plus `SyntaxWarning: invalid escape sequence` | Same family as E5/E10: LaTeX (`\theta`, `\phi`) inside a non-raw Python string; `\t` became a tab so the pattern did not match. Nothing was written (assert before write) | Made the edits with the editor. Rule restated: LaTeX edits only via the editor or raw strings | Fixed |
 | E15 | 2026-11-13 | Phase 1.6 Step 4, basis B (check) | Alg. 4 with basis B never converges: after ~13 iterations the weight change is fixed at 5.91 per iteration (2-cycle); random starts end on one of two points; learned yaw angle gain −0.33; closed loop diverges | No quadratic value fits data where the policy saturates (A30), so policy iteration has no fixed point in the basis | Expected given D33; B kept only as the reported check. Main basis A converges | Explained |
 | E14 | 2026-11-13 | Phase 1.6 Step 3, `collect_attitude_dataset` | 20 runs × 10 s took 412 s | Per-step overhead: 3×3 `solve` for omega_r, `np.cross`, error computed twice per grid point | Closed-form W^-1 (`euler_rate_matrix_inv`, tested), plain cross product with precomputed J^-1, error recorded once: 45–100 s | Fixed |
 | E13 | 2026-11-13 | Phase 1.6 Step 3, attitude training (D29 body-rate error) | With errors up to 0.37–0.7 rad, the learned yaw angle gain is −0.20…0.07 (LQR 1.118; negative = unstable), basis A 93–118 % off LQR; still 4.7 % off at 0.15 rad | Euler kinematics Theta_dot = W(Theta) omega couple the axes (e.g. psi_dot depends on phi × omega_y); a per-axis basis in (e_Theta_k, omega_k − omega_r,k) cannot represent this. Diagnostics: the paper's own model (33) (Theta_dot = omega) gives A 0.57 % / 3.7 % off LQR on the mid / Fig. 8-size region; exact plant with Euler-rate error Theta_dot − Theta_r_dot gives 6.9 % / 20 %, all gains positive | Euler-rate error adopted (D33, user decision); with it, basis A converges and is stable on all cases | Fixed |
