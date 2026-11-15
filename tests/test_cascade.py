@@ -104,3 +104,18 @@ def test_closed_loop_from_paper_initial_conditions(case, fol, mode):
     assert np.abs(tr.x_e[-1, :3]).max() < 2e-3
     assert np.linalg.norm(tr.v_tilde[-1]) < 1e-2
     assert np.linalg.norm(tr.e[-1]) < 0.15 * np.linalg.norm(tr.e[0])
+
+
+def test_finite_difference_e_dot_source(case, fol):
+    """D15 check in the cascade: with e sampled per step and e_dot from the filtered difference (tau = 0.02 s) the
+    loop still converges; the velocity-estimate error stays small (filter lag only, no leader acceleration)."""
+    sysm = CascadeSystem.from_case_study(case, fol)
+    x0 = sysm.initial_state_from_config(fol)
+    fd = simulate_cascade(sysm, make_controller(case, fol), x0, 10.0, H, e_dot_source="finite_difference")
+    ex = simulate_cascade(sysm, make_controller(case, fol), x0, 10.0, H)
+    assert np.abs(fd.mu).max() < fol.beta and np.abs(fd.u).max() < fol.gamma
+    assert np.linalg.norm(fd.v_tilde[-1]) < 2e-2
+    assert np.abs(fd.e - ex.e).max() < 0.05                                  # close to the exact-e_dot run
+    assert np.linalg.norm(fd.e[-1]) < 0.15 * np.linalg.norm(fd.e[0])
+    with pytest.raises(ValueError):
+        simulate_cascade(sysm, make_controller(case, fol), x0, 0.01, H, e_dot_source="other")

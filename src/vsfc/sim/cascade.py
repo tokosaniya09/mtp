@@ -19,6 +19,7 @@ import numpy as np
 
 from vsfc.config import CaseStudy, FollowerConfig
 from vsfc.controllers.cascade import CascadeController
+from vsfc.differentiator import FilteredDifferentiator
 from vsfc.dynamics import (E3, QuadrotorParams, euler_to_rotation, pack_state, project_to_so3,
                            quadrotor_derivatives, rotation_to_euler)
 from vsfc.leader_follower import relative_state
@@ -87,14 +88,19 @@ class CascadeSystem:
         return self._pack(p_j, v_i - np.asarray(v_ij0, float), euler0, omega0, e0)
 
     # ---- dynamics ----
-    def derivatives(self, t: float, x: np.ndarray, f_T: float, tau: np.ndarray,
-                    thrust_commanded: np.ndarray) -> np.ndarray:
-        """x_dot. Plant: eq. (1) with (f_T, tau). Observer: eq. (6) with exact e_dot = v_ij / x* (D15) and the thrust
-        vector selected by `observer_thrust`."""
+    def derivatives(self, t: float, x: np.ndarray, f_T: float, tau: np.ndarray, thrust_commanded: np.ndarray,
+                    sampled: tuple[np.ndarray, np.ndarray] | None = None) -> np.ndarray:
+        """x_dot. Plant: eq. (1) with (f_T, tau). Observer: eq. (6) with the thrust vector selected by
+        `observer_thrust` and, for e and e_dot (D15), either the exact values e, v_ij / x* (sampled is None) or the
+        given held samples (e, e_dot) from the finite-difference source."""
         plant = quadrotor_derivatives(x[:18], f_T, tau, self.params)
-        e, v_ij = self.relative(t, x)
+        if sampled is None:
+            e, v_ij = self.relative(t, x)
+            e_dot = v_ij / self.x_star
+        else:
+            e, e_dot = sampled
         thrust = f_T * (x[6:15].reshape(3, 3) @ E3) if self.observer_thrust == "actual" else thrust_commanded
-        z_dot = self.observer.derivatives(x[18:25], e, v_ij / self.x_star, thrust)
+        z_dot = self.observer.derivatives(x[18:25], e, e_dot, thrust)
         return np.concatenate([plant, z_dot])
 
     @staticmethod
@@ -129,19 +135,29 @@ class CascadeTrajectory:
         return self.v_ij - self.v_hat
 
 
-def simulate_cascade(system: CascadeSystem, controller: CascadeController, x0: np.ndarray, T: float,
-                     h: float) -> CascadeTrajectory:
-    """RK4 with the controller evaluated at each grid point and held over the step (ZOH)."""
+def simulate_cascade(system: CascadeSystem, controller: CascadeController, x0: np.ndarray, T: float, h: float,
+                     e_dot_source: str = "exact", fd_tau: float = 0.02) -> CascadeTrajectory:
+    """RK4 with the controller evaluated at each grid point and held over the step (ZOH).
+
+    e_dot_source (D15): "exact" = simulator truth v_ij / x*; "finite_difference" = e sampled once per step and held
+    (like a camera frame), e_dot from `FilteredDifferentiator(h, fd_tau)` on the samples (D20), initial estimate 0."""
+    if e_dot_source not in ("exact", "finite_difference"):
+        raise ValueError(f"e_dot_source must be 'exact' or 'finite_difference', got {e_dot_source!r}")
     K = int(round(T / h))
     t = h * np.arange(K + 1)
     X = np.empty((K + 1, STATE_DIM))
     X[0] = x = np.asarray(x0, float).copy()
+    diff = FilteredDifferentiator(h, fd_tau) if e_dot_source == "finite_difference" else None
     cmds = []
     for i in range(K):
         theta, omega = system.attitude(x)
         c = controller.step(system.delta(t[i], x), theta, omega)
         thrust_cmd = c.thrust_commanded
-        x = rk4_step(lambda tt, xx: system.derivatives(tt, xx, c.f_T, c.u, thrust_cmd), t[i], x, h,
+        sampled = None
+        if diff is not None:
+            e_now = system.relative(t[i], x)[0]
+            sampled = (e_now, diff.reset(e_now) if i == 0 else diff.update(e_now))
+        x = rk4_step(lambda tt, xx: system.derivatives(tt, xx, c.f_T, c.u, thrust_cmd, sampled), t[i], x, h,
                      system.post_step)
         X[i + 1] = x
         cmds.append(c)

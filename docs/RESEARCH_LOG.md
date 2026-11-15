@@ -11,7 +11,7 @@ Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision ·
 - **Thesis title:** "Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control"
 - **Core question:** how does a follower quadrotor keep a reliable estimate of its leader's state, and hold
   formation, when its visual measurement of the leader is intermittent?
-- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 done (outer loop), Phase 1.6 done (attitude loop + cascade, D29–D34); Phase 1.7 baseline [16] done (D35); left: A6, finite-difference e_dot, Phase 1 summary.
+- **Current phase:** Phase 1 (faithful reproduction); Phase 1.5 done (outer loop), Phase 1.6 done (attitude loop + cascade, D29–D34); Phase 1.7 done (baseline [16], D35; remaining checks; summary). **Phase 1 complete 2026-11-15.** Next: literature review (D16).
 
 ## Base paper
 
@@ -299,12 +299,63 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
             Comparison with the paper: its claim "smaller steady-state errors and faster convergence" holds in direction.
             Fig. 10's oscillating x/y errors lasting ~40 s and the fast decaying ripple in z are NOT reproduced: our
             baseline is smooth and only ~30–40 % slower (A33).
-      - [ ] A6 (kappa_13 = 55 vs 5) and the finite-difference e_dot re-run (D15) in the cascade.
-      - [ ] Phase 1 summary: table of Figs. 2–10, reproduced / partly / not, with the open A-items.
+      - [x] Remaining checks (2026-11-15), `scripts/run_phase1_checks.py`, `results/phase1_7/phase1_checks.txt`;
+            `simulate_cascade` gained `e_dot_source` (1 new test, 154 total, all pass).
+            Fig. 3: leader + both followers from the stated ICs, 50 s (`fig3_trajectories.png`); final q_1 − p_j equals
+            Delta_1j = [4, ±1, 1] m to 4e-6 m.
+            A6: follower 3 with kappa_13 = 5 instead of 55: ||v~|| < 1e-3 after 4.52 s instead of 0.48 s; formation
+            almost unchanged (||e|| < 0.01 after 17.9 vs 18.3 s, max |e − e_ref| 0.06). Fig. 5 shows pair 1–3 converging
+            much faster than pair 1–2, which matches kappa_13 = 55 as printed, so 55 is kept (not a typo).
+            D15: finite-difference e_dot (tau = 0.02 s): max |e − e_ref| 0.0014 (j = 2), 0.0012 (j = 3); settling times
+            unchanged to 0.1 s; residual ||v~|| ≤ 1e-3. The exact-e_dot results stand.
+            A33 exploratory: baseline with [16]'s OWN weights (Riccati gains, clipped; outer K ≈ [3.59, 4.58], attitude
+            K ≈ [10.1, 10.4]) is also smooth from the stated ICs (||x* e|| 0.04 m at 20 s): stiffer tuning does not
+            produce Fig. 10's oscillation.
+      - [x] Phase 1 summary: see "Phase 1 reproduction summary" below.
+- [x] **Phase 1 complete (2026-11-15).** Next: literature review and gap statement (D16), then Phase 2.
 - [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
       vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
 
 **Planned phases:** 0 Scoping/setup (done) → 1 Faithful reproduction (current) → 2 Our contribution → 3 Evaluation and writing.
+
+## Phase 1 reproduction summary (2026-11-15)
+
+Method reproduced: plant (1), image features (2)–(4), relative dynamics (5), observer (6), constrained utility and
+tanh policy (11)–(15), off-policy integral RL (22)–(29) for both loops (Alg. 3, Alg. 4), dual-loop cascade, and the
+ref. [16] baseline. 154 tests. Every gap in the paper is filled by a logged [Eng] decision (D14–D35).
+"Reproduced" below means behaviour, not plotted values: the paper's plotted initial values do not follow from its
+stated initial conditions (A11), and its bases, data and several settings are not given (A16, A17).
+
+| Paper figure | What it shows | Our result | Status |
+|---|---|---|---|
+| Fig. 2a,b | Outer-loop NN weights settle in ~5–6 iterations | 4 iterations from K0, 6–7 from random admissible starts; same weights to 1e-11 across starts | Reproduced (convergence); values not comparable (A16) |
+| Fig. 2c,d | Attitude NN weights settle in ~4 iterations, ~6–7 weights each | 9 iterations (5–6 to visual settling); 24/18 weights (basis A; the 9/6-weight basis B does not converge, E15) | Partly: converges, but slower and with a larger basis (D33) |
+| Fig. 3 | 3-D trajectories, followers join the leader | Same shape; final offsets equal Delta to 4e-6 m | Reproduced |
+| Fig. 4a,b | mu saturates at ±5 for < 0.5 s, then → 0 | From stated ICs max 0.53 / 0.83 N (no saturation); from Fig. 7's plotted e(0): ±5 for 0.7–1.0 s, then → 0 | Reproduced from the plotted ICs only (A11, A27) |
+| Fig. 4c,d | Torque spikes to ±1 briefly, then 0 | Brief initial spike then 0, but peak ≤ 0.46 N m | Partly: shape yes, size no (A32) |
+| Fig. 5 | Observer errors → 0 within ~5 s; pair 1–2 oscillates, pair 1–3 fast | → 0 in 4.5 s (pair 1–2), 0.5 s (pair 1–3); monotone; one hump (0.95 at 0.6 s) only if the observer is fed the commanded thrust | Partly: convergence yes, two-peak oscillation no (A25, A26) |
+| Fig. 6 | Estimated relative velocities settle | v_hat → v_ij (||v~|| < 1e-3 after 4.5 / 0.5 s) | Reproduced (behaviour) |
+| Fig. 7 | Feature errors → 0 in ~5–10 s | ||e|| < 0.05 after 10.4 / 12.7 s, < 0.01 after 16.5 / 18.3 s; → 1e-6 | Partly: converges, somewhat slower; plotted e_z ≈ 12 → 0 in ~3 s is not reachable with \|mu\| ≤ 5 (A11) |
+| Fig. 8 | Attitude errors → 0; pitch swings to ~0.5–0.8 rad | All < 0.01 rad after 3.3–3.7 s; e_psi 0.174 → 0.03 at 2 s; pitch ≤ 0.39 rad, monotone | Partly: yaw yes, pitch oscillation no (A32) |
+| Fig. 9 | Relative position errors → 0 (proposed) | → 0; < 0.05 m after 15.7 / 17.5 s | Reproduced (behaviour); Delta_z transient 0.5 m vs ~0.03 m plotted (A11) |
+| Fig. 10 | Baseline [16] + clipping: oscillating, slower, larger errors | Baseline 22–30 % slower, error at 50 s 20–125× larger, clipped for up to 2 s; smooth, no oscillation (also with [16]'s own weights) | Partly: direction of the comparison yes, size and oscillation no (A33) |
+
+Claims of the paper that our reproduction supports: the observer converges for a constant-velocity leader; the learned
+controllers respect |mu_k| < beta, |u_k| < gamma by construction; both learners converge in a few iterations without
+the drift model; the cascade achieves the formation; the proposed controller converges faster and with smaller final
+error than the clipped [16] baseline.
+
+Findings the thesis should state (limitations of the base paper, from this reproduction):
+1. Gravity must be compensated outside the learned input (D14), or the stated beta = 5 < m g makes the problem infeasible.
+2. The bound holds per component, not in the 2-norm as stated (A2): ||mu||_2 reaches 6.4 > beta.
+3. "Randomly initialized" weights must be admissible; other starts converge to non-stabilising solutions (D28, A28).
+4. The behaviour policy must carry exploration; on-policy data cannot identify the actor (A17).
+5. The attitude state as written (33) cannot track a reference; error coordinates are needed (D29), and with the exact
+   plant the rate error must be the Euler-rate error (D33, E13).
+6. The plotted initial values of Figs. 4, 5, 7, 8, 9 are inconsistent with the stated initial conditions and bounds (A11).
+7. The baseline's settings are not given, and [16]'s gamma^2 cannot be used with the paper's R (E19).
+8. The observer needs e_dot and a continuous measurement; with an intermittent measurement Theorem 1 does not apply.
+   This is the gap Phase 2 targets.
 
 ## Open questions and pending inputs
 
@@ -347,7 +398,7 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
       a large-error case and a near-saturation case.
 - [ ] A28: "randomly initialized" weights (Sec. VI) vs Alg. 1's admissible initial policy: random non-admissible starts
       converge to non-stabilising solutions (E8). We use random admissible starts (D28); state in thesis.
-- [ ] A6: sensitivity check of kappa_13 = 55 vs 5 still to do (in closed loop).
+- [x] A6: kappa_13 = 55 vs 5 checked in the cascade (2026-11-15): 55 kept; Fig. 5's fast pair 1–3 matches it.
 - [ ] Is UWB acceptable under the "communication-free" premise? State the assumption explicitly.
 
 ## Error log
