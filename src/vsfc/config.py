@@ -216,6 +216,57 @@ def _inner_learning(d: dict) -> InnerLearningConfig:
 
 
 @dataclass(frozen=True)
+class Baseline16OuterData:
+    """[Eng, D35] data for the ref. [16] baseline, outer loop (linear relative model + recorded disturbance)."""
+
+    n_runs: int
+    run_length: float
+    x0_max: float
+    explore_freqs: np.ndarray
+    explore_amplitude: float
+    dist_freqs: np.ndarray
+    dist_amplitude: float
+    seed: int
+
+
+@dataclass(frozen=True)
+class Baseline16Config:
+    """Baseline of Fig. 10: ref. [16]'s discounted zero-sum optimal controller with input saturation (D35)."""
+
+    alpha: float                 # 1/s
+    gamma2_ratio_pos: float      # gamma_p^2 / R
+    gamma2_ratio_att: float      # gamma_Theta^2 / D
+    critic_degrees: tuple
+    actor_degrees: tuple
+    att_critic_degrees: tuple
+    att_actor_degrees: tuple
+    max_iter: int
+    outer_data: Baseline16OuterData
+    att_dist_freqs: np.ndarray
+    att_dist_amplitude: float
+
+
+def _baseline16(d: dict) -> Baseline16Config:
+    od = d["outer_data"]
+    outer = Baseline16OuterData(
+        n_runs=int(od["n_runs"]), run_length=_positive(od["run_length"], "run_length"),
+        x0_max=_positive(od["x0_max"], "x0_max"), explore_freqs=np.asarray(od["explore_freqs"], float),
+        explore_amplitude=_positive(od["explore_amplitude"], "explore_amplitude"),
+        dist_freqs=np.asarray(od["dist_freqs"], float),
+        dist_amplitude=_positive(od["dist_amplitude"], "dist_amplitude"), seed=int(od["seed"]))
+    cfg = Baseline16Config(
+        alpha=float(d["alpha"]), gamma2_ratio_pos=_positive(d["gamma2_ratio_pos"], "gamma2_ratio_pos"),
+        gamma2_ratio_att=_positive(d["gamma2_ratio_att"], "gamma2_ratio_att"),
+        critic_degrees=_degrees(d["critic_degrees"]), actor_degrees=_degrees(d["actor_degrees"]),
+        att_critic_degrees=_degrees(d["att_critic_degrees"]), att_actor_degrees=_degrees(d["att_actor_degrees"]),
+        max_iter=int(d["max_iter"]), outer_data=outer, att_dist_freqs=np.asarray(d["att_dist_freqs"], float),
+        att_dist_amplitude=_positive(d["att_dist_amplitude"], "att_dist_amplitude"))
+    if cfg.alpha < 0 or min(cfg.gamma2_ratio_pos, cfg.gamma2_ratio_att) <= 1.0:
+        raise ValueError("baseline16: need alpha >= 0 and gamma^2 / R > 1 (otherwise the game has no solution)")
+    return cfg
+
+
+@dataclass(frozen=True)
 class CaseStudy:
     g: float
     leader: LeaderConfig
@@ -232,6 +283,7 @@ class CaseStudy:
     observer_init: dict
     learning_outer: OuterLearningConfig
     learning_inner: InnerLearningConfig
+    baseline16: "Baseline16Config"
 
 
 def _follower(d: dict) -> FollowerConfig:
@@ -303,4 +355,5 @@ def load_case_study(path: str | Path = DEFAULT_CONFIG) -> CaseStudy:
         observer_init=dict(eng["observer_init"]),
         learning_outer=_outer_learning(raw["learning_outer"]),
         learning_inner=_inner_learning(raw["learning_inner"]),
+        baseline16=_baseline16(raw["baseline16"]),
     )
