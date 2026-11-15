@@ -228,7 +228,7 @@ non-increasing outside the boundary layer; the gain condition holds for the Sec.
 
 ---
 
-## 5. Visual-servoing controller — Sec. IV, eqs. (10)–(32) → `src/vsfc/rl/`, `src/vsfc/controllers/visual_servo.py`
+## 5. Visual-servoing controller — Sec. IV, eqs. (10)–(32) → `src/vsfc/rl/`, `src/vsfc/sim/outer_loop.py` (policy evaluated by `rl.offpolicy_irl.policy`)
 
 ### 5.1 Learning system — (10)
 
@@ -406,7 +406,7 @@ stated) initial errors (A11).
 
 ---
 
-## 6. Attitude controller — Sec. V, eqs. (33)–(42), Alg. 4 → `src/vsfc/controllers/attitude.py` (+ shared `rl/`)
+## 6. Attitude controller — Sec. V, eqs. (33)–(42), Alg. 4 → `src/vsfc/sim/inner_loop.py` (+ shared `rl/`; policy evaluated by `rl.offpolicy_irl.policy`)
 
 **[Paper] (33)** $\dot z_j = F_j(z_j)+G_ju_j$, with $z_j=[\Theta_j;\omega_j;\Theta_{rj};\omega_{rj}]\in\mathbb R^{12}$,
 $u_j=f_{\tau j}$, $\|u_j\|\le\gamma_j$,
@@ -553,11 +553,21 @@ reaches ±1 briefly. Fig. 5: observer errors go to 0 within about 5 s. Figs. 7�
 relative-position errors settle within about 5–15 s. Fig. 8: $e_\psi(0)\approx0.17$, decaying to 0. Fig. 10
 (baseline [16] with clipping) is slower and oscillatory.
 
-**Code.**
-- `sim/scenario.py`: `leader_trajectory(t)` (kinematic leader, [Eng]); `load_case_study(yaml)`.
-- `sim/closed_loop.py`: RK4 at a fixed step $h$ ([Eng], A18). Plant (1) ×2, observer (6) ×2, controllers (25)
-  and (42) ×2, mapping (A15); logs every signal shown in Figs. 3–9.
-- `scripts/run_case_study.py`.
+**Code (as built; the Phase 0 plan named `sim/scenario.py`, `sim/closed_loop.py`, `scripts/run_case_study.py`,
+which were not created under those names).**
+- Config: `config.load_case_study` (`config/paper_case_study.yaml`); leader: `sim/leaders.py`.
+- **Cascade [Eng] D34:** `controllers/cascade.py` — `CascadeController(outer, inner, reference).step(delta, Theta, omega)`
+  → `CascadeCommand(mu, f_T, u, theta_r, theta_r_dot, x_e)`: outer policy (25) → D14 → D30 → D33 error → policy (42).
+  Plant-agnostic. `sim/cascade.py` — `CascadeSystem` (plant (1) + observer (6), state (25,)), observer thrust
+  "actual" $f_TRe_3$ or "commanded" $\mu+m_jge_3$ (A26); `simulate_cascade(system, controller, x0, T, h,
+  e_dot_source="exact"|"finite_difference")`, controller every step $h$ = 1 ms (ZOH). Each follower is simulated with
+  the leader separately (followers do not interact, Sec. VI).
+- **Baseline of Fig. 10 [Eng] D35:** `rl/zero_sum.py` — ref. [16]'s discounted zero-sum learner ([16] eqs. (32), (48);
+  `game_riccati` known answer); `sim/baseline16.py` — set-up on the case study (base paper's Q, R, S, D;
+  $\alpha=0.06$; $\gamma^2=16$, 48), `clipped_policy` (direct saturation).
+- Scripts: `run_cascade.py` (Figs. 4, 5, 7, 8, 9), `train_baseline16.py`, `run_baseline16.py` (Figs. 9 vs 10),
+  `run_phase1_checks.py` (Fig. 3, A6, D15).
+- Results and the figure-by-figure comparison: `docs/RESEARCH_LOG.md`, "Phase 1 reproduction summary".
 
 ---
 
@@ -601,7 +611,7 @@ is built; **Note** = no action, but it must be stated in the thesis.
 | A3 | $r_{j,k_1,k_2}$ undefined in (27)–(29) | — | $r_{j,k_1,k_2}:=[\mathcal R_j]_{k_1k_2}$; diagonal ⇒ explicit form in §5.6, derived from (22); checked against the PDF and by the LQR known-answer test (D23) | Decided |
 | A4 | Observer needs $\dot e$; $\rho=\dot e-\hat v/x^*$, and exact $\dot e$ already gives $v=x^*\dot e$ | (6), §4 derivation | Pluggable source: (a) exact $\dot e$ from simulator (idealised; possibly what the figures used), (b) filtered finite difference of sampled $e$. Reproduce with (a), report (b) as a check | **Decided (D15)** |
 | A5 | Boundary layer ⇒ (9) holds only outside $|\rho_k|<\epsilon$; convergence is to a neighbourhood. $\hat\zeta$ only grows (no leakage). $\tilde\zeta\to0$ is not shown | (6), (9) | Note; test for bounded convergence, not exact | Note |
-| A6 | $\kappa_{13}=55$ vs $\kappa_{12}=5$ (possible typo) | Sec. VI | Use as printed; sensitivity check | Proposed |
+| A6 | $\kappa_{13}=55$ vs $\kappa_{12}=5$ (possible typo) | Sec. VI | Use as printed; sensitivity check. **Checked 2026-11-15:** with 5, pair 1–3's observer needs 4.5 s instead of 0.5 s; Fig. 5's fast pair 1–3 matches 55 | **Decided: 55 as printed** |
 | A7 | (10) is not autonomous in $\delta$; first block uses $\hat v$ instead of $v$; $C_j$ written as a matrix | (10) | Note; learner is unaffected (data-driven) | Note |
 | A8 | $\dot s=v/x^*$ exact only for a small sphere near the optical axis | §2 derivation | Way 1 `ideal_features` everywhere; `moment_features` uses disc moments; exact ellipse not modelled — stated assumption | **Decided (D19)** |
 | A9 | Sphere radius, $a^*$ not given; $x^*$ not stated | Sec. VI | $x^*=4$ m from $\Delta_x$; radius and $a^*$ needed only for the moment check, e.g. $r=0.1$ m [Eng] | Proposed |
@@ -621,7 +631,11 @@ is built; **Note** = no action, but it must be stated in the thesis.
 | A23 | Leader has constant velocity ⇒ adaptive term $\bar\zeta$ never needed in Sec. VI (Limitation 3) | Sec. VI | Reproduce as printed; add accelerating-leader test (our extension, labelled) | Note |
 | A24 | Value of $g$ not stated | Sec. VI | $g=9.81$ m/s² | Proposed |
 | A25 | Fig. 5: $\|\tilde e_{12}(0)\|\approx8.8$, $\|\tilde e_{13}(0)\|\approx1.7$, but $\|e_{12}(0)\|\approx0.64$, so the paper's $\hat e(0)$ is unknown | Fig. 5 | Keep A19 ($\hat e(0)=e(0)$); compare behaviour, not $t=0$ values | Open |
-| A26 | Fig. 5 $\|\tilde v_{12}\|$ oscillates; with exact $\dot e$ and true thrust, (7) is linear with real eigenvalues ($-5.02,-1.23$ for pair 12) and sat only adds damping, so (6) alone cannot oscillate | Fig. 5, (7) | Hypothesis: paper fed commanded $\mu$ (attitude lag) or a differentiated/noisy $\dot e$; test in closed loop | Open |
+| A26 | Fig. 5 $\|\tilde v_{12}\|$ oscillates; with exact $\dot e$ and true thrust, (7) is linear with real eigenvalues ($-5.02,-1.23$ for pair 12) and sat only adds damping, so (6) alone cannot oscillate | Fig. 5, (7) | Hypothesis: paper fed commanded $\mu$ (attitude lag) or a differentiated/noisy $\dot e$; test in closed loop. **Cascade 2026-11-14/15:** actual thrust → monotone; commanded thrust → one hump (0.95 at 0.6 s), not two peaks; finite-difference $\dot e$ → no oscillation | Open (partly supported) |
 | A27 | With the stated initial conditions the outer-loop input stays far from the bound: the LQR-limit policy peaks at 0.53 N / 0.83 N vs $\beta=5$, yet Fig. 4 shows saturation at ±5 in the first 0.5 s | Sec. VI, Fig. 4, §5.8 Consequence 4 | Validate on the stated ICs AND on an [Eng] large-error scenario that saturates $\mu$; the data region for learning must cover large errors | Explained: ±5 needs $|e|\gtrsim12$ = Fig. 7's plotted $e_z(0)$ (A11); validated on stated, large-error, near-saturation cases (Phase 1.5) |
 | A28 | Sec. VI: NN weights "randomly initialized"; Alg. 1 Step 1 needs an admissible $\mu^{(0)}$ | Phase 1.5: random $N(0,0.1^2)$ actor starts converge per axis to the non-stabilising Riccati solutions (E8) | Random starts drawn from admissible policies (positive per-axis linear gains, cubic 0) (D28) | Decided |
-| A29 | Inner/outer time-scale separation is weak: with $\mathcal S=10I$, $\mathcal D=8I$ the attitude loop's dominant pole is −1 rad/s, against −0.26…−0.82 for the outer loop (§5.8, §6.1) | Sec. VI weights; Fig. 8 | Expect attitude lag to change Fig. 4a,b and possibly to explain A26 (Fig. 5 oscillation). Measure in the cascade (Phase 1.6 Step 6); no change to paper weights | Open |
+| A29 | Inner/outer time-scale separation is weak: with $\mathcal S=10I$, $\mathcal D=8I$ the attitude loop's dominant pole is −1 rad/s, against −0.26…−0.82 for the outer loop (§5.8, §6.1) | Sec. VI weights; Fig. 8 | Expect attitude lag to change Fig. 4a,b and possibly to explain A26 (Fig. 5 oscillation). Measure in the cascade (Phase 1.6 Step 6); no change to paper weights. **Measured (D34):** lag slows formation convergence by ~1–1.5 s, no instability | Closed (measured) |
+| A30 | Attitude rate-error coordinate and main basis at Fig. 8's error sizes (pitch ≈ 0.8 rad) | E13: body-rate error collapses the yaw gain | Euler-rate error $e_\omega=\dot\Theta-\dot\Theta_r$; basis A main | **Decided (D33)** |
+| A31 | Learned attitude policy costs 0.1–1.0 % more than the LQR-limit policy on the exact plant | Phase 1.6 Step 5 | Cross-axis coupling not representable per axis; small | Open (note) |
+| A32 | Fig. 4c,d torque spikes to ±1 and Fig. 8 pitch oscillation (≈0.5–0.8 rad) not reproduced | Cascade: max $\|u_k\|$ 0.43–0.46 N m, pitch ≤ 0.39 rad, monotone | Paper's $\chi_j$ (reference generation) unknown; D30 is ours | Open (not resolvable from the paper) |
+| A33 | Fig. 10's oscillating baseline not reproduced | D35 baseline smooth, 22–30 % slower; also smooth with [16]'s own weights | Baseline settings not given in the paper | Open (not resolvable from the paper) |
