@@ -1,0 +1,39 @@
+follower 2: cascade, 50 s, step 0.001 s
+  [stated ICs]
+      ||e||: 0.637 -> < 0.05 after 10.4 s, < 0.01 after 16.5 s, ||e(50)|| = 1.4e-06; min e_x = -0.47; cost = 15.985
+      |mu_k| > 0.99 beta for 0.00 s; max |mu_k| = 0.53 N (beta 5), max ||mu||_2 = 0.71; max |u_k| = 0.166 N m (gamma 1); f_T in [12.47, 12.77] N
+      attitude: max |e_Theta| = [0.037 0.041 0.174] rad, all < 0.01 rad after 3.3 s; max |Theta_r| = [0.037 0.041 0.   ]
+      observer: max ||v~|| = 0.755, < 1e-3 after 4.5 s; max ||e~|| = 0.0236; local maxima of ||v~|| in the first 3 s: none (monotone)
+      ideal attitude (1.5): < 0.05 after 8.9 s, < 0.01 after 15.0 s; cost = 16.833; max |e_cascade - e_ideal| = 0.0592
+  [stated ICs, observer fed commanded thrust]
+      ||e||: 0.637 -> < 0.05 after 11.5 s, < 0.01 after 17.6 s, ||e(50)|| = 1.9e-06; min e_x = -0.47; cost = 18.300
+      |mu_k| > 0.99 beta for 0.00 s; max |mu_k| = 0.53 N (beta 5), max ||mu||_2 = 0.71; max |u_k| = 0.166 N m (gamma 1); f_T in [12.47, 12.77] N
+      attitude: max |e_Theta| = [0.037 0.041 0.174] rad, all < 0.01 rad after 3.3 s; max |Theta_r| = [0.037 0.041 0.   ]
+      observer: max ||v~|| = 0.755, < 1e-3 after 6.8 s; max ||e~|| = 0.0209; local maxima of ||v~|| in the first 3 s: none (monotone)
+  [large error]
+      ||e||: 3.513 -> < 0.05 after 18.8 s, < 0.01 after 24.9 s, ||e(50)|| = 1.3e-05; min e_x = 0.00; cost = 814.816
+      |mu_k| > 0.99 beta for 0.00 s; max |mu_k| = 3.21 N (beta 5), max ||mu||_2 = 3.54; max |u_k| = 0.280 N m (gamma 1); f_T in [12.46, 13.23] N
+      attitude: max |e_Theta| = [0.12  0.243 0.174] rad, all < 0.01 rad after 3.3 s; max |Theta_r| = [0.12  0.252 0.   ]
+      observer: max ||v~|| = 0.755, < 1e-3 after 4.5 s; max ||e~|| = 0.0236; local maxima of ||v~|| in the first 3 s: none (monotone)
+      ideal attitude (1.5): < 0.05 after 17.8 s, < 0.01 after 23.9 s; cost = 647.251; max |e_cascade - e_ideal| = 0.3970
+  [near saturation]
+      ||e||: 3.513 -> < 0.05 after 19.8 s, < 0.01 after 25.9 s, ||e(50)|| = 1.7e-05; min e_x = 0.00; cost = 1360.396
+      |mu_k| > 0.99 beta for 0.00 s; max |mu_k| = 3.80 N (beta 5), max ||mu||_2 = 5.03; max |u_k| = 0.280 N m (gamma 1); f_T in [11.70, 13.23] N
+      attitude: max |e_Theta| = [0.123 0.245 0.174] rad, all < 0.01 rad after 3.3 s; max |Theta_r| = [0.238 0.332 0.   ]
+      observer: max ||v~|| = 3.464, < 1e-3 after 3.9 s; max ||e~|| = 0.1048; local maxima of ||v~|| in the first 3 s: none (monotone)
+      ideal attitude (1.5): < 0.05 after 19.1 s, < 0.01 after 25.2 s; cost = 1046.506; max |e_cascade - e_ideal| = 0.3731
+  [Fig. 7 plotted e(0)]
+      ||e||: 12.504 -> < 0.05 after 23.2 s, < 0.01 after 29.3 s, ||e(50)|| = 4.3e-05; min e_x = 0.00; cost = 8814.990
+      |mu_k| > 0.99 beta for 0.71 s; max |mu_k| = 5.00 N (beta 5), max ||mu||_2 = 6.12; max |u_k| = 0.427 N m (gamma 1); f_T in [8.37, 14.15] N
+      attitude: max |e_Theta| = [0.186 0.388 0.174] rad, all < 0.01 rad after 3.7 s; max |Theta_r| = [0.186 0.393 0.   ]
+      observer: max ||v~|| = 0.755, < 1e-3 after 4.5 s; max ||e~|| = 0.0236; local maxima of ||v~|| in the first 3 s: none (monotone)
+  [Fig. 7 plotted e(0), observer fed commanded thrust]
+      ||e||: 12.504 -> < 0.05 after 23.3 s, < 0.01 after 29.4 s, ||e(50)|| = 4.3e-05; min e_x = 0.00; cost = 8866.169
+      |mu_k| > 0.99 beta for 0.64 s; max |mu_k| = 5.00 N (beta 5), max ||mu||_2 = 6.12; max |u_k| = 0.427 N m (gamma 1); f_T in [8.22, 14.14] N
+      attitude: max |e_Theta| = [0.186 0.387 0.174] rad, all < 0.01 rad after 3.7 s; max |Theta_r| = [0.186 0.387 0.   ]
+      observer: max ||v~|| = 0.946, < 1e-3 after 8.6 s; max ||e~|| = 0.0450; local maxima of ||v~|| in the first 3 s: [(0.59, 0.946)]
+  saved results\phase1_6\fig4_inputs_f2.png
+  saved results\phase1_6\fig5_observer_f2.png
+  saved results\phase1_6\fig7_e_cascade_f2.png
+  saved results\phase1_6\fig8_attitude_cascade_f2.png
+  saved results\phase1_6\fig9_relpos_cascade_f2.png

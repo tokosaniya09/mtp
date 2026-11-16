@@ -1,6 +1,6 @@
 # Research Log — Occlusion-Resilient Multi-Modal Perception for Vision-Based Quadrotor Formation Control
 
-Last updated: 2026-11-13
+Last updated: 2026-11-16
 
 This is the canonical research log (decision D12). It continues the earlier external notes (snapshot of 2026-11-10).
 Labels: **[Paper]** base paper's method · **[Eng]** our engineering decision · **[Ours]** our contribution.
@@ -79,6 +79,7 @@ Framing:
 
 | # | Date | Decision | Why | Impact | Status |
 |---|---|---|---|---|---|
+| D37 | 2026-11-16 | Literature review started, done jointly: working file `docs/literature_review.md` (review question, six sub-questions, threads A vision-based formation, B intermittent-measurement estimation, C vision–UWB–IMU and communication, D visibility maintenance/re-acquisition; search log; paper table with Verified/Read columns; reading-note template). A paper is cited only when Verified AND Read. User reads and writes notes (first: base paper's references, B1 Parikh et al. TCST 2018); Claude searches and verifies | User direction: do the review together (first research project). Search summaries are not evidence (rule 6) | 12 seed papers listed, 3 fully verified (A0, B3, C1), none read yet beyond the base paper; gap statement in §7 of the review file is a working hypothesis only | Decided |
 | D36 | 2026-11-15 | Target venue: IEEE Transactions on Cybernetics (the base paper's journal). No deadline fixed yet. UWB vs the "communication-free" premise is deferred until after the literature review | User decision. A journal has no fixed submission date; the venue expects stability analysis alongside simulation. The UWB choice is part of the approach we will propose, so it should follow the review | Phase 2 should aim for analysis (bounded estimation error under occlusion) as well as simulation; literature review must cover how UWB ranging is treated in communication-free formation work | Decided |
 | D35 | 2026-11-15 | [Eng] Baseline of Fig. 10 (Phase 1.7). Ref. [16] verified from the PDF (`papers/ref16_cheng2024.pdf`): M. Cheng, H. Liu, Q. Gao, J. Lü, X. Xia, IEEE Trans. Cybern. 54(8):4502–4512, Aug. 2024, DOI 10.1109/TCYB.2023.3284648. Implemented faithfully in form: [16]'s discounted zero-sum optimal laws (20), (46), learned by its off-policy Bellman equations (32), (48), then clipped component-wise to ±beta, ±gamma. Adaptation: our delta = [e, v_hat] and observer (6) replace [16]'s containment observer; attitude state as D29/D33; conversion D30. Weights: base paper's Q, R, S, D; alpha = 0.06 ([16]); gamma^2 = [16]'s ratio × R: 16 (position, ratio 2), 48 (attitude, ratio 6); disturbance enters the input channel (D = G) as a force/torque. Outer data: linear relative model (§5.8) + recorded sinusoidal force; attitude data: D32 system + recorded sinusoidal torque. Bases: outer (2,4)/(1,3); attitude (2)/(1) | Base paper: "[16] is implemented in the considered IBVS formation control scenario" with "a direct input saturation strategy"; no weights, discount or attenuation given. [16]'s gamma^2 = 4, 6 with R = 8 has NO solution (needs gamma^2 > R; checked by the game Riccati equation), so the ratio is kept instead. [16]'s containment observer needs inter-vehicle communication, absent here. Attitude (2,4)/(1,3) did not converge on the exact plant (E18) | `rl/zero_sum.py`, `sim/baseline16.py`, `scripts/train_baseline16.py`, `run_baseline16.py`; config `baseline16`; 11 new tests. D30 now has its citation: [16] eqs. (2), (40) give the same thrust-to-attitude conversion | Decided (user chose form, weights and the ratio fix 2026-11-14/15) |
 | D34 | 2026-11-14 | [Eng] Cascade (Phase 1.6 Step 6): plant = full eq. (1); controller (outer policy → D14/D30 mapping → attitude policy A) evaluated every 1 ms step and held (ZOH); Theta_r_dot by the D20 filter (tau = 0.02 s); observer fed the ACTUAL thrust f_T R e3 by default, COMMANDED mu + m g e3 as the A26 variant; outer weights from Phase 1.5, attitude weights from Phase 1.6 (basis A) | Attitude poles near −140 rad/s cannot be held over dT = 0.05 s; 1 ms matches Phase 1.5. Paper gives no control rate and no link between the loops beyond "dual-loop" (Sec. V) | `controllers/cascade.py` (plant-agnostic), `sim/cascade.py`, `scripts/run_cascade.py`; 6 new tests | Decided |
@@ -314,8 +315,12 @@ Phase 0.1 equation map (`docs/equation_map.md`), 2026-11-10: eqs. (1)–(42) map
             produce Fig. 10's oscillation.
       - [x] Phase 1 summary: see "Phase 1 reproduction summary" below.
 - [x] **Phase 1 complete (2026-11-15).** Next: literature review and gap statement (D16), then Phase 2.
-- [ ] *Deferred until Phase 1 is done (D16):* literature review (occlusion / intermittent measurements;
-      vision–UWB–IMU fusion), then a one-page gap statement and hypothesis.
+- [ ] Literature review (started 2026-11-16, D37; `docs/literature_review.md`), then a one-page gap statement
+      and hypothesis.
+      - [x] Review question, threads A–D, note template, first 4 searches, 12 seed papers (3 fully verified).
+      - [ ] User task 1: list the base paper's references on vision-based formation; one line each on visibility.
+      - [ ] User task 2: pass-1 read of B1 (Parikh et al., TCST 2018) with the note template.
+      - [ ] Claude: verify the candidate rows; continue searches for threads B–D.
 
 **Planned phases:** 0 Scoping/setup (done) → 1 Faithful reproduction (current) → 2 Our contribution → 3 Evaluation and writing.
 

@@ -1,0 +1,23 @@
+outer loop, follower 2: 600 windows, 60 unknowns, gamma^2 = 16, alpha = 0.06; converged=True iterations=6 rank=60 cond=1.52e+04 rms=3.40e-08
+    changes 8.6e+01, 2.3e+01, 4.1e+00, 1.6e-01, 3.3e-04, 1.6e-09
+    control gain per axis: learned [[1.345, 1.9847], [1.345, 1.9847], [1.345, 1.9847]]
+                           Riccati [[1.345, 1.9847], [1.345, 1.9847], [1.345, 1.9847]]  max rel. err 0.00%
+    worst-case disturbance gain: learned [[0.6725, 0.9923], [0.6725, 0.9923], [0.6725, 0.9923]], Riccati [[0.6725, 0.9923], [0.6725, 0.9923], [0.6725, 0.9923]]
+    quadratic critic: rel. err 3.94e-07
+    higher-order |w| max: critic 9.65e-05, control 4.26e-06
+    saved results\phase1_7\baseline16_outer_f2.npz
+outer loop, follower 3: 600 windows, 60 unknowns, gamma^2 = 16, alpha = 0.06; converged=True iterations=6 rank=60 cond=3.47e+04 rms=2.26e-08
+    changes 1.0e+02, 3.6e+01, 6.8e+00, 2.9e-01, 6.6e-04, 3.7e-09
+    control gain per axis: learned [[1.3201, 2.1504], [1.3201, 2.1504], [1.3201, 2.1504]]
+                           Riccati [[1.3201, 2.1504], [1.3201, 2.1504], [1.3201, 2.1504]]  max rel. err 0.00%
+    worst-case disturbance gain: learned [[0.6601, 1.0752], [0.6601, 1.0752], [0.6601, 1.0752]], Riccati [[0.6601, 1.0752], [0.6601, 1.0752], [0.6601, 1.0752]]
+    quadratic critic: rel. err 1.57e-07
+    higher-order |w| max: critic 7.35e-05, control 2.38e-06
+    saved results\phase1_7\baseline16_outer_f3.npz
+attitude loop (both followers): 4000 windows, 21 unknowns, gamma^2 = 48, alpha = 0.06; converged=True iterations=8 rank=21 cond=6.94e+02 rms=2.67e-02
+    changes 4.8e+01, 2.4e+01, 3.2e+01, 4.8e+00, 1.4e+00, 6.9e-02, 3.3e-04, 9.5e-06
+    control gain per axis: learned [[1.3387, 1.2146], [1.1985, 1.2302], [1.0862, 1.2132]]
+                           Riccati [[1.1883, 1.234], [1.1883, 1.2337], [1.1881, 1.241]]  max rel. err 12.66%
+    worst-case disturbance gain: learned [[0.2588, 0.1759], [0.2019, 0.2], [0.1752, 0.1706]], Riccati [[0.198, 0.2057], [0.198, 0.2056], [0.198, 0.2068]]
+    quadratic critic: rel. err 7.68e-02
+    saved results\phase1_7\baseline16_att.npz

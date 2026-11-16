@@ -1,0 +1,11 @@
+1. reference runs (stated ICs, exact e_dot, 50 s)
+  [follower 2, kappa = 5] ||e|| < 0.05 after 10.4 s, < 0.01 after 16.5 s; ||v~|| < 1e-2 after 2.99 s, < 1e-3 after 4.52 s, max after 5 s 4.9e-04; max |mu_k| 0.53, max |u_k| 0.166
+      final q_1 - p_2 = [4. 1. 1.] m (desired Delta = [4. 1. 1.]), error 4.2e-06 m
+  [follower 3, kappa = 55] ||e|| < 0.05 after 12.7 s, < 0.01 after 18.3 s; ||v~|| < 1e-2 after 0.32 s, < 1e-3 after 0.48 s, max after 5 s 8.8e-15; max |mu_k| 0.83, max |u_k| 0.166
+      final q_1 - p_3 = [ 4. -1.  1.] m (desired Delta = [ 4. -1.  1.]), error 3.0e-06 m
+  saved results\phase1_7\fig3_trajectories.png
+2. A6: follower 3 with kappa_13 = 5 instead of the printed 55 (30 s)
+  [follower 3, kappa = 5] ||e|| < 0.05 after 12.3 s, < 0.01 after 17.9 s; ||v~|| < 1e-2 after 2.99 s, < 1e-3 after 4.52 s, max after 5 s 4.9e-04; max |mu_k| 0.83, max |u_k| 0.166; max |e - e_ref| 0.0606, max |mu - mu_ref| 0.502 N
+3. D15: finite-difference e_dot (tau = 0.02 s), 30 s
+  [follower 2, finite-difference e_dot] ||e|| < 0.05 after 10.4 s, < 0.01 after 16.6 s; ||v~|| < 1e-2 after 2.82 s, < 1e-3 after 3.82 s, max after 5 s 7.7e-04; max |mu_k| 0.53, max |u_k| 0.166; max |e - e_ref| 0.0014, max |mu - mu_ref| 0.016 N
+  [follower 3, finite-difference e_dot] ||e|| < 0.05 after 12.7 s, < 0.01 after 18.4 s; ||v~|| < 1e-2 after 0.30 s, < 1e-3 after 6.14 s, max after 5 s 1.0e-03; max |mu_k| 0.83, max |u_k| 0.166; max |e - e_ref| 0.0012, max |mu - mu_ref| 0.134 N

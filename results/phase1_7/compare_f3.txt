@@ -1,0 +1,22 @@
+follower 3: proposed vs ref. [16] baseline with input saturation, 50 s
+  [stated ICs]
+    proposed  ||x* e||: 3.35 m -> < 0.2 m after  12.7 s, < 0.05 m after  17.5 s, at 50 s 3.3e-06 m; int ||x* e||^2 dt =    33.29
+              max |mu_k| 0.83 N, at the bound for  0.00 s; max |u_k| 0.166 N m, at the bound for 0.000 s; max |e_Theta| [0.021 0.042 0.174] rad; min e_x -0.75
+    ref. [16] ||x* e||: 3.35 m -> < 0.2 m after  16.6 s, < 0.05 m after  24.0 s, at 50 s 4.1e-04 m; int ||x* e||^2 dt =    38.95
+              max |mu_k| 0.99 N, at the bound for  0.00 s; max |u_k| 0.189 N m, at the bound for 0.000 s; max |e_Theta| [0.025 0.05  0.174] rad; min e_x -0.75
+  [large error]
+    proposed  ||x* e||: 14.05 m -> < 0.2 m after  18.9 s, < 0.05 m after  23.6 s, at 50 s 1.9e-05 m; int ||x* e||^2 dt =   881.93
+              max |mu_k| 3.50 N, at the bound for  0.00 s; max |u_k| 0.187 N m, at the bound for 0.000 s; max |e_Theta| [0.079 0.163 0.174] rad; min e_x 0.00
+    ref. [16] ||x* e||: 14.05 m -> < 0.2 m after  25.4 s, < 0.05 m after  32.8 s, at 50 s 2.1e-03 m; int ||x* e||^2 dt =   936.12
+              max |mu_k| 4.89 N, at the bound for  0.00 s; max |u_k| 0.258 N m, at the bound for 0.000 s; max |e_Theta| [0.095 0.219 0.174] rad; min e_x 0.00
+  [near saturation]
+    proposed  ||x* e||: 14.05 m -> < 0.2 m after  19.9 s, < 0.05 m after  24.7 s, at 50 s 2.7e-05 m; int ||x* e||^2 dt =  1329.57
+              max |mu_k| 4.49 N, at the bound for  0.00 s; max |u_k| 0.464 N m, at the bound for 0.000 s; max |e_Theta| [0.112 0.183 0.174] rad; min e_x 0.00
+    ref. [16] ||x* e||: 14.05 m -> < 0.2 m after  26.5 s, < 0.05 m after  33.9 s, at 50 s 2.5e-03 m; int ||x* e||^2 dt =  1303.58
+              max |mu_k| 5.00 N, at the bound for  1.14 s; max |u_k| 0.855 N m, at the bound for 0.000 s; max |e_Theta| [0.148 0.251 0.174] rad; min e_x 0.00
+  [Fig. 7 plotted e(0)]
+    proposed  ||x* e||: 50.01 m -> < 0.2 m after  23.0 s, < 0.05 m after  27.7 s, at 50 s 6.9e-05 m; int ||x* e||^2 dt = 10752.02
+              max |mu_k| 5.00 N, at the bound for  0.00 s; max |u_k| 0.247 N m, at the bound for 0.000 s; max |e_Theta| [0.105 0.216 0.174] rad; min e_x 0.00
+    ref. [16] ||x* e||: 50.01 m -> < 0.2 m after  32.0 s, < 0.05 m after  39.5 s, at 50 s 7.1e-03 m; int ||x* e||^2 dt = 11573.73
+              max |mu_k| 5.00 N, at the bound for  2.07 s; max |u_k| 0.337 N m, at the bound for 0.000 s; max |e_Theta| [0.125 0.288 0.174] rad; min e_x 0.00
+  saved results\phase1_7\fig9_10_relpos_f3.png

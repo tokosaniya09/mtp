@@ -8,3 +8,7 @@ results/**/*.png
 
 # Copyrighted paper PDF (IEEE licence; cite via DOI instead)
 papers/*.pdf
+
+# Local presentation outputs (contain crops of the copyrighted paper / large GIFs)
+results/comparison/
+results/animations/
