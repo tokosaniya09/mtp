@@ -24,19 +24,19 @@ Sub-questions each paper is read against:
 
 | Thread | Topic | Why we need it | Lead |
 |---|---|---|---|
-| A | Vision-based (IBVS / bearing) formation and leader-follower control of UAVs; what they assume about visibility | Shows whether our gap (Limitation 8 of the base paper) is already filled | User (reads), Claude (searches) |
+| A | Vision-based (IBVS / bearing) formation and leader-follower control of UAVs; what they assume about visibility | Shows whether our gap (Limitation 8 of the base paper) is already filled | User |
 | B | Estimation with intermittent measurements: predictor/observer switching, dwell-time conditions, Kalman filtering with missing observations | The theory Phase 2 will most likely build on (TCYB expects a stability result, D36) | Both |
-| C | Vision–UWB–IMU fusion for relative localization; how "communication-free" work treats UWB | Decides the open UWB question (D36) | Claude (searches), user (decides) |
-| D | Keeping the leader visible: FOV constraints, control barrier functions, re-acquisition / search | Alternative to "survive the gap" is "avoid the gap"; we must position against it | Claude |
+| C | Vision–UWB–IMU fusion for relative localization; how "communication-free" work treats UWB | Decides the open UWB question (D36) | User |
+| D | Keeping the leader visible: FOV constraints, control barrier functions, re-acquisition / search | Alternative to "survive the gap" is "avoid the gap"; we must position against it | User |
 
 ## 3. Search log
 
 | Date | Who | Tool | Query | Kept |
 |---|---|---|---|---|
-| 2026-11-16 | Claude | web search | vision-based leader-follower formation control quadrotor occlusion intermittent visual measurement observer | A3, A4, A5, A6, D1 |
-| 2026-11-16 | Claude | web search | image-based visual servoing target tracking intermittent feedback dwell-time predictor observer switched systems | B1, B2 |
-| 2026-11-16 | Claude | web search | vision UWB IMU fusion relative localization multi-UAV leader follower formation without communication | C1, C2, A2 |
-| 2026-11-16 | Claude | web search | field-of-view constrained visual servoing formation control quadrotors leader loss recovery communication-free | D1, D2 |
+| 2026-11-16 | User | web search | vision-based leader-follower formation control quadrotor occlusion intermittent visual measurement observer | A3, A4, A5, A6, D1 |
+| 2026-11-16 | User | web search | image-based visual servoing target tracking intermittent feedback dwell-time predictor observer switched systems | B1, B2 |
+| 2026-11-16 | User | web search | vision UWB IMU fusion relative localization multi-UAV leader follower formation without communication | C1, C2, A2 |
+| 2026-11-16 | User | web search | field-of-view constrained visual servoing formation control quadrotors leader loss recovery communication-free | D1, D2 |
 
 ## 4. Paper table
 
